@@ -1,0 +1,50 @@
+name: OSL · 原版規則與錄製對照
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['cloud_checks/rules_audit.py', '.github/workflows/rules-audit.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.10'}
+      - name: Fetch current recordings, without downloading participant models
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p runtime/data runtime/audit
+          gh release download arena-data --pattern site.tar.gz --dir runtime
+          tar -xzf runtime/site.tar.gz -C runtime
+          chmod 777 runtime/audit
+      - name: Decrypt official source fixture
+        env:
+          ARENA_FIXTURE_KEY: ${{ secrets.ARENA_FIXTURE_KEY }}
+        run: |
+          pip install cryptography==46.0.3
+          python arena/decrypt_fixture.py
+      - name: Build existing CPU-only cloud image
+        run: docker build --tag osl-worker .
+      - name: Verify hashes and replay saved actions through official evaluation environment
+        run: >-
+          docker run --rm --network=none --read-only --cap-drop=ALL
+          --security-opt=no-new-privileges --pids-limit=128 --memory=4g --cpus=2
+          --tmpfs /tmp:rw,nosuid,size=512m
+          -v "$PWD/runtime/official:/official:ro"
+          -v "$PWD/runtime/data:/data:ro"
+          -v "$PWD/fixture_manifest.json:/manifest.json:ro"
+          -v "$PWD/cloud_checks/rules_audit.py:/app/rules_audit.py:ro"
+          -v "$PWD/runtime/audit:/out:rw"
+          --entrypoint python osl-worker /app/rules_audit.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: osl-rules-audit
+          path: runtime/audit
+          retention-days: 1
