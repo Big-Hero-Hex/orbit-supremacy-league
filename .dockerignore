@@ -3,3 +3,4 @@
 !arena/
 arena/*
 !arena/worker.py
+!arena/participants.py

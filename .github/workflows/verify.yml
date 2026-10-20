@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['arena/**', 'Dockerfile', 'fixture.enc', '.github/workflows/verify.yml', 'site/**', 'tests/**']
+    paths: ['arena/**', 'Dockerfile', '.dockerignore', 'fixture.enc', '.github/workflows/verify.yml', 'site/**', 'tests/**']
 permissions:
   contents: read
 jobs:
