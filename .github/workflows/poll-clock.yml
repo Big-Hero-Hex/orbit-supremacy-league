@@ -1,0 +1,32 @@
+name: OSL · 五分鐘雲端時鐘
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/poll-clock.yml']
+  schedule:
+    # Backup restart only. Normal cadence is the server-side environment timer,
+    # because GitHub schedule events have been observed not to fire at all.
+    - cron: '17,47 * * * *'
+concurrency:
+  group: osl-five-minute-clock
+  cancel-in-progress: false
+permissions:
+  contents: read
+  actions: write
+  deployments: write
+jobs:
+  next-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    # GitHub waits FIVE minutes before allocating the runner. No sleeping VM,
+    # personal computer, paid runner, user PAT, or public dispatch credential.
+    environment: osl-five-minute-clock
+    steps:
+      - name: Check changed models and arm the next five-minute tick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARENA_REPOSITORY: ${{ github.repository }}
+        run: |
+          gh api --method POST "repos/$ARENA_REPOSITORY/actions/workflows/league.yml/dispatches" -f ref=main
+          gh api --method POST "repos/$ARENA_REPOSITORY/actions/workflows/poll-clock.yml/dispatches" -f ref=main

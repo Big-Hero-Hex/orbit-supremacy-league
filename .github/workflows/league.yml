@@ -4,7 +4,9 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '3,8,13,18,23,28,33,38,43,48,53,58 * * * *'
+    # Hourly fallback; the separate server-side five-minute clock dispatches
+    # normal checks, avoiding dependence on GitHub cron event delivery.
+    - cron: '2 * * * *'
 
 concurrency:
   group: osl-broadcast
