@@ -19,17 +19,25 @@ mkdirSync('runtime/real-acceptance',{recursive:true});
 const browser=await chromium.launch({channel:'chrome'});const errors=[];
 try{
  const page=await browser.newPage({viewport:{width:1440,height:1000},deviceScaleFactor:1});page.on('pageerror',e=>errors.push(String(e)));
- await page.goto(url,{waitUntil:'networkidle'});await page.waitForFunction(()=>document.querySelectorAll('.leader-row').length>=2);
+ await page.goto(url,{waitUntil:'networkidle'});
+ for(let attempt=0;await page.locator('#rankingUpdates').count()===0 && attempt<40;attempt++){await page.waitForTimeout(5000);await page.reload({waitUntil:'networkidle'});}
+ await page.waitForFunction(()=>document.querySelectorAll('.leader-row').length>=2);
  await page.waitForFunction(()=>document.querySelectorAll('#rankingChart circle').length>=2);
  assert.ok(state.ranking_history.length>=1);
  const expectedPoints=state.ranking_history.reduce((n,p)=>n+p.players.length,0);
  await page.selectOption('#rankingMetric','rank');assert.equal(await page.locator('#rankingChart circle').count(),expectedPoints);
+ assert.equal(await page.locator('#rankingUpdates').evaluate(e=>e.open),false);
+ assert.equal(await page.locator('#rankingChanges button').first().isVisible(),false);
+ assert.ok((await page.locator('#rankingLatestUpdate').textContent()).includes(state.ranking_history.at(-1).change_summary));
+ await page.locator('#rankingUpdates>summary').click();
  assert.equal(await page.locator('#rankingChanges button').count(),state.ranking_history.length);
  for(let i=0;i<state.ranking_history.length;i++){
   await page.locator(`#rankingChanges button[data-index="${i}"]`).click();
   assert.ok((await page.locator('#rankingDetail').textContent()).includes(state.ranking_history[i].change_summary));
   assert.equal(await page.locator('#rankingDetail .version-change').count(),state.ranking_history[i].model_updates.length);
  }
+ await page.locator('#rankingUpdates>summary').click();
+ assert.equal(await page.locator('#rankingUpdates').evaluate(e=>e.open),false);
  await page.selectOption('#rankingMetric','score_rate');
  await page.locator('#ranking-history').screenshot({path:'runtime/real-acceptance/ranking-real.png'});
  const csv=await (await fetch(url+'data/ranking_history.csv?verify='+Date.now())).text();assert.ok(csv.includes('model_sha256'));assert.ok(csv.includes('changed_player_names'));assert.ok(csv.includes('model_updates_json'));assert.ok(csv.includes('廖格致'));

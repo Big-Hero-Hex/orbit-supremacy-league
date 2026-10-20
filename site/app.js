@@ -1,5 +1,5 @@
 import {setupPairNavigation} from './pair-navigation.js';
-import {renderRankingHistory} from './ranking-history.js?v=historychanges1';
+import {renderRankingHistory} from './ranking-history.js?v=historyfold1';
 import {cloudPulse} from './cloud-pulse.js';
 const $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pct=n=>Number.isFinite(n)?`${(n*100).toFixed(1)}%`:'—', num=n=>Number.isFinite(n)?n.toLocaleString('zh-TW',{maximumFractionDigits:1}):'—';
