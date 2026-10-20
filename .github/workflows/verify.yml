@@ -33,3 +33,16 @@ jobs:
           --security-opt=no-new-privileges --pids-limit=128 --memory=4g --cpus=2
           --tmpfs /tmp:rw,nosuid,size=512m --tmpfs /out:rw,nosuid,size=256m
           -v "$PWD/runtime/official:/official:ro" osl-worker --self-test
+      - name: Install cloud browser for desktop/mobile and playback checks
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+          python tests/make_ui_fixture.py
+      - name: Test published website and isolated UI fixture
+        run: node tests/ui.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: osl-cloud-ui-check
+          path: runtime/ui-check
+          retention-days: 1

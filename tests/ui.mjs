@@ -1,0 +1,37 @@
+import {chromium} from 'playwright';
+import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
+import {gzipSync} from 'node:zlib';
+import assert from 'node:assert/strict';
+const fixture=JSON.parse(readFileSync('runtime/ui-fixture.json','utf8'));
+mkdirSync('runtime/ui-check',{recursive:true});
+const browser=await chromium.launch();
+const errors=[];const results=[];
+try{
+ const real=await browser.newPage({viewport:{width:1440,height:1000},deviceScaleFactor:1});
+ real.on('pageerror',e=>errors.push(String(e)));
+ await real.goto('https://jasonliaojcs.github.io/orbit-supremacy-league/',{waitUntil:'networkidle'});
+ await real.locator('.roster-card').first().waitFor();
+ assert.equal(await real.locator('.roster-card').count(),4);
+ assert.equal(await real.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await real.screenshot({path:'runtime/ui-check/desktop.png',fullPage:true});results.push('Production page: four roster cards, no horizontal overflow');
+ await real.setViewportSize({width:390,height:844});
+ await real.screenshot({path:'runtime/ui-check/mobile.png',fullPage:true});
+ assert.equal(await real.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);results.push('Mobile 390px: no horizontal overflow');
+ const page=await browser.newPage({viewport:{width:1440,height:1000}});page.on('pageerror',e=>errors.push(String(e)));
+ await page.route('**/data/latest.json',route=>route.fulfill({json:fixture.state}));
+ await page.route('**/test.json.gz',route=>route.fulfill({contentType:'application/gzip',body:gzipSync(JSON.stringify(fixture.record))}));
+ await page.goto('https://jasonliaojcs.github.io/orbit-supremacy-league/',{waitUntil:'networkidle'});
+ await page.waitForFunction(()=>document.querySelectorAll('.leader-row').length===4);
+ assert.equal(await page.locator('.matrix-cell').count(),12);assert.equal(await page.locator('.pair-tab').count(),6);
+ await page.waitForFunction(()=>document.getElementById('screenEmpty').hidden===true);
+ await page.selectOption('#seatFilter','ship1');assert.equal(await page.locator('.game-row').count(),50);
+ await page.selectOption('#seatFilter','');await page.fill('#seedFilter',String(fixture.state.pairs[0].games[0].seed));assert.equal(await page.locator('.game-row').count(),2);
+ await page.fill('#seedFilter','');await page.click('#play');await page.waitForTimeout(550);await page.click('#play');
+ assert.ok(Number(await page.locator('#seek').inputValue())>0);
+ await page.locator('.event-chip').first().click();await page.selectOption('#statsScope','pair');
+ assert.equal(await page.locator('#detailedStats th').count(),3);
+ await page.locator('.pair-tab').nth(2).click();await page.waitForFunction(()=>document.getElementById('screenEmpty').hidden===true);
+ await page.screenshot({path:'runtime/ui-check/ui-fixture-only.png',fullPage:true});
+ results.push('UI fixtures only: 6 pairs, 12 matrix cells, seat filter, seed search, playback, event seek, pair statistics, pair switching');
+ assert.deepEqual(errors,[]);writeFileSync('runtime/ui-check/results.json',JSON.stringify({passed:true,results,errors,fixture_scores_are_not_real_results:true},null,2));console.log(results.join('\n'));
+}finally{await browser.close();}
