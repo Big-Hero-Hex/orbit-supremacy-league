@@ -1,3 +1,4 @@
+import {renderRankingHistory} from './ranking-history.js';
 const $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pct=n=>Number.isFinite(n)?`${(n*100).toFixed(1)}%`:'—', num=n=>Number.isFinite(n)?n.toLocaleString('zh-TW',{maximumFractionDigits:1}):'—';
 const date=t=>t?new Date(t).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false}):'尚無';
@@ -21,7 +22,7 @@ async function refresh(){
  $('cloudLink').href=`https://github.com/${data.repository}/actions/workflows/league.yml`;
  $('driveRoot').href=`https://drive.google.com/drive/folders/${data.drive_folder}`;
  $('notice').textContent=(data.failures?.length?`${data.failures.length}組配對未完成，沒有直接判輸。請查看雲端賽程。 `:'')+'比賽、推論與錄影全在GitHub雲端執行。關機不影響；本頁只顯示已發布結果。';
- renderStandings();renderMatrix();renderModels();renderHighlights();
+ renderStandings();renderMatrix();renderModels();renderHighlights();renderRankingHistory(data);
  const keep=data.pairs.find(p=>p.key===oldKey); if(keep){pair=keep;renderTabs();renderGames();renderStats();}else if(data.pairs.length)choosePair(data.pairs[0].key);else{pair=null;renderTabs();renderStats();}
  countdown();cloudStatus();
  }catch(error){$('cloudState').textContent='暫時無法取得最新結果';$('notice').textContent='雲端資料連線暫時失敗，既有結果不代表更新已完成。請稍後刷新。';console.error(error);}

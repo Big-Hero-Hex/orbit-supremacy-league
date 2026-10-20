@@ -12,6 +12,12 @@ const browser=await chromium.launch({channel:'chrome'});const errors=[];
 try{
  const page=await browser.newPage({viewport:{width:1440,height:1000},deviceScaleFactor:1});page.on('pageerror',e=>errors.push(String(e)));
  await page.goto(url,{waitUntil:'networkidle'});await page.waitForFunction(()=>document.querySelectorAll('.leader-row').length>=2);
+ await page.waitForFunction(()=>document.querySelectorAll('#rankingChart circle').length>=2);
+ assert.equal(state.ranking_history.length,1,'Initial genuine history must not invent old snapshots');
+ await page.selectOption('#rankingMetric','rank');assert.equal(await page.locator('#rankingChart circle').count(),2);
+ await page.selectOption('#rankingMetric','score_rate');
+ await page.locator('#ranking-history').screenshot({path:'runtime/real-acceptance/ranking-real.png'});
+ const csv=await (await fetch(url+'data/ranking_history.csv?verify='+Date.now())).text();assert.ok(csv.includes('model_sha256'));assert.ok(csv.includes('廖格致'));
  await page.locator(`[data-pair="${pair.key}"]`).first().click();
  await page.waitForFunction(()=>document.getElementById('screenEmpty').hidden===true);
  assert.equal(await page.locator('.game-row').count(),100);

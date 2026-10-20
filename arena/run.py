@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import tempfile
 from aggregate import export_csv, export_tables, standings, summarize
+from ranking_history import update_history, export_history
 from common import ROOT, next_check, now, read, write
 
 def main():
@@ -63,6 +64,9 @@ def main():
     state["status"] = "complete" if state["complete_round_robin"] else "partial" if state["pairs"] else "waiting"
     state["updated_at"] = now()
     state["next_scheduled_check"] = next_check()
+    state['ranking_history']=update_history(previous,history,state)
+    write(ROOT/'site/data/ranking_history.json',state['ranking_history'])
+    export_history(ROOT/'site/data',state['ranking_history'])
     export_csv(ROOT/"site/data/results.csv",state["pairs"])
     export_tables(ROOT/"site/data",state)
     write(ROOT/"site/data/latest.json",state)

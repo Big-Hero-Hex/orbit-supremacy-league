@@ -22,6 +22,16 @@ try{
  await page.route('**/replays/*.json.gz',route=>route.fulfill({contentType:'application/gzip',body:gzipSync(JSON.stringify(fixture.record))}));
  await page.goto('https://jasonliaojcs.github.io/orbit-supremacy-league/',{waitUntil:'networkidle'});
  await page.waitForFunction(()=>document.querySelectorAll('.leader-row').length===4);
+ await page.waitForFunction(()=>document.querySelectorAll('#rankingChart circle').length===12);
+ await page.selectOption('#rankingMetric','rank');assert.ok((await page.locator('#rankingChart').textContent()).includes('#1'));
+ await page.locator('#rankingLegend button').first().click();assert.equal(await page.locator('#rankingChart circle').count(),9);
+ await page.locator('#rankingLegend button').first().click();assert.equal(await page.locator('#rankingChart circle').count(),12);
+ await page.locator('#rankingChart circle').first().focus();assert.ok((await page.locator('#rankingDetail').textContent()).includes('2026'));
+ await page.selectOption('#rankingMetric','points');assert.equal(await page.locator('#rankingHistoryTable tbody tr').count(),12);
+ await page.locator('#ranking-history').screenshot({path:'runtime/ui-check/ranking-fixture-only.png'});
+ await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await page.locator('#ranking-history').screenshot({path:'runtime/ui-check/ranking-mobile-fixture-only.png'});await page.setViewportSize({width:1440,height:1000});
+ results.push('Synthetic UI history only: 3 snapshots /4players, rank/points selector, legend toggles, keyboard detail, 12 table rows, mobile no overflow');
  assert.equal(await page.locator('.matrix-cell').count(),12);assert.equal(await page.locator('.pair-tab').count(),6);
  await page.waitForFunction(()=>document.getElementById('screenEmpty').hidden===true);
  await page.selectOption('#seatFilter','ship1');assert.equal(await page.locator('.game-row').count(),50);
