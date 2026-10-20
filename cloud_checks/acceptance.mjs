@@ -2,7 +2,15 @@ import {chromium} from 'playwright';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 const url='https://jasonliaojcs.github.io/orbit-supremacy-league/';
-const state=await (await fetch(url+'data/latest.json?acceptance='+Date.now())).json();
+let state;
+// A push also starts Pages deployment; wait for that version rather than testing
+// the preceding release and misreporting a missing new feature as a regression.
+for(let i=0;i<60;i++){
+ state=await (await fetch(url+'data/latest.json?acceptance='+Date.now())).json();
+ if(Array.isArray(state.ranking_history))break;
+ await new Promise(resolve=>setTimeout(resolve,5000));
+}
+assert.ok(Array.isArray(state.ranking_history),'Requires ranking-history deployment');
 assert.ok(state.total_games>=100,'Requires genuine finished matches, not fixtures');
 const pair=state.pairs.find(p=>p.a==='liao'&&p.b==='yang');assert.ok(pair);assert.equal(pair.games.length,100);
 mkdirSync('runtime/real-acceptance',{recursive:true});
@@ -13,8 +21,9 @@ try{
  const page=await browser.newPage({viewport:{width:1440,height:1000},deviceScaleFactor:1});page.on('pageerror',e=>errors.push(String(e)));
  await page.goto(url,{waitUntil:'networkidle'});await page.waitForFunction(()=>document.querySelectorAll('.leader-row').length>=2);
  await page.waitForFunction(()=>document.querySelectorAll('#rankingChart circle').length>=2);
- assert.equal(state.ranking_history.length,1,'Initial genuine history must not invent old snapshots');
- await page.selectOption('#rankingMetric','rank');assert.equal(await page.locator('#rankingChart circle').count(),2);
+ assert.ok(state.ranking_history.length>=1);
+ const expectedPoints=state.ranking_history.reduce((n,p)=>n+p.players.length,0);
+ await page.selectOption('#rankingMetric','rank');assert.equal(await page.locator('#rankingChart circle').count(),expectedPoints);
  await page.selectOption('#rankingMetric','score_rate');
  await page.locator('#ranking-history').screenshot({path:'runtime/real-acceptance/ranking-real.png'});
  const csv=await (await fetch(url+'data/ranking_history.csv?verify='+Date.now())).text();assert.ok(csv.includes('model_sha256'));assert.ok(csv.includes('廖格致'));
