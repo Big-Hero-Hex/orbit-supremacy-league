@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {cloudPulse} from '../site/cloud-pulse.js';
+const now=Date.parse('2026-10-20T15:30:00Z'),data={checked_at:'2026-10-20T14:00:00Z',cloud_run:'1'};
+assert.equal(cloudPulse(data,{runs:[]},now).status,'delayed');
+const good={id:2,path:'.github/workflows/league.yml',status:'completed',conclusion:'success',updated_at:'2026-10-20T15:29:30Z'};
+const clock={path:'.github/workflows/poll-clock.yml',status:'waiting',created_at:'2026-10-20T15:28:00Z'};
+let p=cloudPulse(data,{runs:[good,clock]},now);assert.equal(p.status,'idle');assert.equal(p.due,Date.parse('2026-10-20T15:33:00Z'));assert.equal(p.noChange,true);
+assert.equal(cloudPulse(data,{runs:[{...good,status:'in_progress'},clock]},now).status,'checking');
+assert.equal(cloudPulse(data,{runs:[{...good,conclusion:'failure'},clock]},now).status,'failed');
+assert.equal(cloudPulse(data,{runs:[good,{...clock,created_at:'2026-10-20T15:10:00Z'}]},now).status,'delayed');
+assert.equal(cloudPulse(data,{unavailable:true,runs:[good]},now).status,'unverified');
+assert.equal(cloudPulse({...data,cloud_run:'2'},{runs:[good,clock]},now).noChange,false);
+console.log('7 cloud pulse checks passed: stale ≠ nochange, server clock, active, failed, delayed, API unavailable, published');

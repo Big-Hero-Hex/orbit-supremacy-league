@@ -31,3 +31,11 @@
 數據中心提供逐局、排名、兩兩勝率、座位、Match、戰鬥統計、模型版本七種UTF-8 BOM CSV。比例保留0–1原始數值。網站每分鐘讀取已發布資料；雲端檢查狀態每5分鐘讀一次GitHub公開狀態API，因此沒有換版也能看到最近檢查與倒數，不必重新發布整個網站。狀態API無法讀取時以最後成功資料時間標示等待，不捏造即時狀態。
 
 歷史走勢以每次有效戰績變更為一個快照，可切換排名、每場積分率、總積分，點選選手可隱藏曲線。首筆結果只畫單點；未參賽者留空、不補0分。快照記錄時間、模型SHA、對手配對、場數與暫列/完整範圍，嵌入輕量manifest並提供ranking_history.json與UTF-8 BOM ranking_history.csv。無換版、僅刷新時間不增加快照；舊重播刪除不影響快照。不同對手版本/參賽人數的曲線不能直接解讀為單一模型變強。
+
+## 五分鐘雲端檢查與失效提示
+
+2026-10-20實測：GitHub `schedule` 雖為active，22:03後超過一小時沒有建立定時run，手動/push仍可正常執行；不是比賽或錄影一直重測。權限/預設main分支/公開非fork/未封存均核對正常；不能把具體根因未證明的排程停發硬說成單一高負載原因。
+
+正常檢查改由 `poll-clock.yml` 的GitHub environment五分鐘server-side wait timer接續觸發 `league.yml`，同時安排下一個clock。等待期間不分配runner、不在電腦或VM內sleep；公開repository免費wait timer，使用本次job的短效GITHUB_TOKEN，不新增私人PAT。單一clock concurrency避免多條輪詢鏈；league單一concurrency避免重疊比賽。clock在17/47分有cron後備重啟、league每小時02分有獨立後備檢查。GitHub若整體API/runner/環境計時服務停擺仍可能延遲，不能保證外部平台永不故障。
+
+網站每分鐘重讀已發布結果；五分鐘讀一次公開run狀態（手動刷新立即重讀）。顯示最近成功檢查、當前執行、下次clock預期時間、超時/失敗/API不可確認；不把過時成績叫做「已檢查但沒變更」。若要停止自動化，在Actions停用「五分鐘雲端時鐘」及「雲端賽事中心」兩workflow。沒有模型變更時維持manifest metadata-only快速檢查，無ZIP下載/遊戲/錄影/重新發布。

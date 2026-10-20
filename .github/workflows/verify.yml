@@ -19,6 +19,7 @@ jobs:
         run: |
           python -m unittest discover -s tests -v
           node --check site/app.js
+          node tests/test_cloud_pulse.mjs
       - name: Decrypt read-only official fixture
         env:
           ARENA_FIXTURE_KEY: ${{ secrets.ARENA_FIXTURE_KEY }}
