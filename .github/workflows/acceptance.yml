@@ -1,0 +1,27 @@
+name: OSL · 真實賽果播放驗收
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/acceptance.yml', 'cloud_checks/acceptance.mjs']
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Install hosted browser
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Inspect real completed matches and MP4 playback
+        run: node cloud_checks/acceptance.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: osl-real-acceptance
+          path: runtime/real-acceptance
+          retention-days: 1
