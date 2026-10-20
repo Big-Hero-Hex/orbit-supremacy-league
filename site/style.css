@@ -9,3 +9,5 @@
 .poll-warning{border-color:#a87d34;background:#31200e;color:#ffd18b}
 
 .viewing-note{font-size:.78rem;line-height:1.6;color:var(--muted);padding:0 1rem}.roster{grid-template-columns:repeat(3,minmax(0,1fr))}@media(max-width:900px){.roster{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:550px){.roster{grid-template-columns:1fr}}
+
+.matrix-panel,.protocol{min-width:0}

@@ -46,7 +46,10 @@ try{
  await page.locator('#rankingChart circle').first().focus();assert.ok((await page.locator('#rankingDetail').textContent()).includes('2026'));
  await page.selectOption('#rankingMetric','points');assert.equal(await page.locator('#rankingHistoryTable tbody tr').count(),18);
  await page.locator('#ranking-history').screenshot({path:'runtime/ui-check/ranking-fixture-only.png'});
- await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await page.setViewportSize({width:390,height:844});
+ await page.screenshot({path:'runtime/ui-check/six-participants-mobile-fixture-only.png',fullPage:true});
+ writeFileSync('runtime/ui-check/mobile-width-diagnostic.json',JSON.stringify(await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth,wide:[...document.querySelectorAll('main *')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).map(e=>({tag:e.tagName,id:e.id,class:e.className,right:e.getBoundingClientRect().right,client:e.clientWidth,scroll:e.scrollWidth})).slice(0,25)})),null,2));
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  await page.locator('#ranking-history').screenshot({path:'runtime/ui-check/ranking-mobile-fixture-only.png'});await page.setViewportSize({width:1440,height:1000});
  results.push('Synthetic UI history only: 3 snapshots /6participants, rank/points selector, legend toggles, keyboard detail, 18 table rows, mobile no overflow');
  assert.equal(await page.locator('.matrix-cell').count(),30);assert.equal(await page.locator('.pair-tab').count(),15);
