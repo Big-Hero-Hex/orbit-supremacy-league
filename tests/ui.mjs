@@ -33,7 +33,9 @@ try{
  await real.screenshot({path:'runtime/ui-check/desktop.png',fullPage:true});results.push('Production page: published roster count, no horizontal overflow');
  await real.setViewportSize({width:390,height:844});
  await real.screenshot({path:'runtime/ui-check/mobile.png',fullPage:true});
- assert.equal(await real.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);results.push('Mobile 390px: no horizontal overflow');
+ const realMobileOverflow=await real.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
+ writeFileSync('runtime/ui-check/production-mobile-diagnostic.json',JSON.stringify(await real.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth,wide:[...document.querySelectorAll('main *')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).map(e=>({tag:e.tagName,id:e.id,class:e.className,right:e.getBoundingClientRect().right,client:e.clientWidth,scroll:e.scrollWidth})).slice(0,60)})),null,2));
+ results.push(`Production mobile overflow: ${realMobileOverflow}; independently verify current checkout below`);
  const page=await browser.newPage({viewport:{width:1440,height:1000}});page.on('pageerror',e=>errors.push(String(e)));
  await page.route('**/data/latest.json',route=>route.fulfill({json:fixture.state}));
  await page.route('**/replays/*.json.gz',route=>route.fulfill({contentType:'application/gzip',body:gzipSync(JSON.stringify(fixture.record))}));
@@ -93,5 +95,6 @@ try{
  assert.equal(pulseReads,2,'manual refresh must bypass five-minute API cache');assert.equal(await pulse.locator('#pollWarning').isVisible(),false);
  await pulse.locator('.broadcast-status').screenshot({path:'runtime/ui-check/recovered-status-fixture-only.png'});
  results.push('Mocked cloud status: stale warning visible, manual refresh refetches API immediately, healthy unchanged recovery hides warning');
+ assert.equal(realMobileOverflow,false,'Published mobile layout must not overflow');
  assert.deepEqual(errors,[]);writeFileSync('runtime/ui-check/results.json',JSON.stringify({passed:true,results,errors,fixture_scores_are_not_real_results:true},null,2));console.log(results.join('\n'));
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

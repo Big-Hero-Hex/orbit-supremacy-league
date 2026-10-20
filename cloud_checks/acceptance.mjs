@@ -64,7 +64,10 @@ try{
    teacherChecks.push({bot,all100_scores:true,guide20_balanced:true,canvas_playback:true,ours:p.stats.liao});
   }
  }
- await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await page.setViewportSize({width:390,height:844});
+ writeFileSync('runtime/real-acceptance/mobile-width-diagnostic.json',JSON.stringify(await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth,wide:[...document.querySelectorAll('main *')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).map(e=>({tag:e.tagName,id:e.id,class:e.className,right:e.getBoundingClientRect().right,width:e.getBoundingClientRect().width,client:e.clientWidth,scroll:e.scrollWidth})).slice(0,80)})),null,2));
+ await page.screenshot({path:'runtime/real-acceptance/mobile-before-check.png',fullPage:true});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  await page.screenshot({path:'runtime/real-acceptance/mobile-real.png',fullPage:true});assert.deepEqual(errors,[]);
  writeFileSync('runtime/real-acceptance/results.json',JSON.stringify({passed:true,synthetic_data:false,total_real_games:state.total_games,pair:pair.key,ours:{wins:pair.stats.liao.wins,losses:pair.stats.liao.losses,draws:pair.stats.liao.draws},all100_replays:true,seat_filters_50_each:true,canvas_playback:true,official_mp4_playback:true,teacherChecks,desktop_mobile_no_overflow:true,errors},null,2));
 }finally{await browser.close();}
