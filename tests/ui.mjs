@@ -75,8 +75,12 @@ try{
  await page.locator('#pairNext').click();await page.waitForFunction(()=>document.getElementById('pairTabs').scrollLeft>100);
  const scroller=page.locator('#pairTabs');await scroller.evaluate(e=>e.scrollLeft=0);await scroller.hover();await page.mouse.wheel(0,350);
  await page.waitForFunction(()=>document.getElementById('pairTabs').scrollLeft>100);
- await scroller.evaluate(e=>e.scrollLeft=0);await page.waitForTimeout(200);
+ // Compact history changes page height. Place the drag target fully inside the
+ // viewport and finish any arrow/page animation before using raw coordinates.
+ await scroller.evaluate(e=>{e.scrollIntoView({block:'center',behavior:'instant'});e.scrollTo({left:0,behavior:'instant'});});
+ await page.waitForFunction(()=>document.getElementById('pairTabs').scrollLeft===0);
  const selectedBefore=await page.locator('#pairTabs .active').getAttribute('data-pair'),box=await scroller.boundingBox();
+ assert.ok(await page.evaluate(({x,y})=>Boolean(document.elementFromPoint(x,y)?.closest('#pairTabs')),{x:box.x+300,y:box.y+15}),'drag starts on the visible tab strip');
  await page.mouse.move(box.x+300,box.y+15);await page.mouse.down();await page.mouse.move(box.x+80,box.y+15,{steps:8});await page.mouse.up();
  assert.ok(await scroller.evaluate(e=>e.scrollLeft)>100);assert.equal(await page.locator('#pairTabs .active').getAttribute('data-pair'),selectedBefore,'drag must not activate a different match');
  const leftBefore=await scroller.evaluate(e=>e.scrollLeft);await page.locator('#pairPrevious').click();await page.waitForFunction(before=>document.getElementById('pairTabs').scrollLeft<before,leftBefore);
