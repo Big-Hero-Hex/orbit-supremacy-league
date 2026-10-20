@@ -7,6 +7,7 @@ from test_league import LeagueTests
 from aggregate import summarize, standings
 from common import now, seeds
 from ranking_history import snapshot
+from highlights import viewing_guide
 
 root=Path(__file__).resolve().parents[1]
 config=json.loads((root/"arena.json").read_text())
@@ -21,13 +22,14 @@ for a,b in itertools.combinations(players,2):
         r["replay"]=f"replays/{r['id']}.json.gz";r["audit"]=f"audit/{r['id']}.npz"
     raw["model_info"]={a["id"]:{"parameters":589828},b["id"]:{"parameters":589828}}
     pairs.append(summarize(raw,job,{}))
-state={**config,"players":players,"pairs":pairs,"standings":standings(players,pairs),"total_games":600,"complete_round_robin":True,"status":"complete","checked_at":now(),"updated_at":now(),"failures":[]}
+for pair in pairs:pair['viewing_guide']=viewing_guide(pair['games'],pair['a'],pair['b'])
+state={**config,"players":players,"pairs":pairs,"standings":standings(players,pairs),"total_games":len(pairs)*100,"expected_pairs":len(pairs),"expected_games":len(pairs)*100,"complete_round_robin":True,"status":"complete","checked_at":now(),"updated_at":now(),"failures":[]}
 state['ranking_history']=[]
 for i in range(3):
     earlier=copy.deepcopy(state);earlier['updated_at']=f'2026-10-20T{10+i}:00:00Z'
     for j,row in enumerate(earlier['standings']):
-        rank=(j+i)%4+1;wins=220-rank*20
-        row.update(rank=rank,wins=wins,losses=300-wins,points=wins,score_rate=wins/300,win_rate=wins/300)
+        rank=(j+i)%len(players)+1;games=(len(players)-1)*100;wins=games-rank*20
+        row.update(rank=rank,wins=wins,losses=games-wins,games=games,points=wins,score_rate=wins/games,win_rate=wins/games)
     state['ranking_history'].append(snapshot(earlier))
 record={"ticks":100,"assignment":pairs[0]["games"][0]["assignment"],"walls":[],"ship_polygon":[[0,-20],[-13,14],[13,14]],"pilot_polygon":[[0,-9],[-6,6],[6,6]],"frames":[{"t":t,"s":[[300+t,400,0,1,0,3,0,0,0],[900-t,400,3.14,1,0,3,0,0,0]],"a":[],"b":[],"p":[],"e":[]} for t in range(0,101,2)]}
 (root/"runtime").mkdir(exist_ok=True)

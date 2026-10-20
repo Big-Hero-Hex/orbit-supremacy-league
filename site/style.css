@@ -7,3 +7,5 @@
 .csv-downloads{display:flex;gap:10px;flex-wrap:wrap;padding:14px 17px;margin-bottom:17px;border:1px solid var(--line);background:#11191b;font-size:11px;align-items:center}.csv-downloads b{color:var(--green);margin-right:5px}.csv-downloads a{padding:5px 9px;border:1px solid #34453b;color:#bacfc0}.csv-downloads a:hover{border-color:var(--green)}@media(max-width:760px){.section-title{flex-wrap:wrap}}
 
 .poll-warning{border-color:#a87d34;background:#31200e;color:#ffd18b}
+
+.viewing-note{font-size:.78rem;line-height:1.6;color:var(--muted);padding:0 1rem}.roster{grid-template-columns:repeat(3,minmax(0,1fr))}@media(max-width:900px){.roster{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:550px){.roster{grid-template-columns:1fr}}

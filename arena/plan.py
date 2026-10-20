@@ -3,8 +3,9 @@ import itertools
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from common import ROOT, digest, now, pair_key, read, seeds, write
+from common import ROOT, digest, now, pair_key, read, seeds, write,engine_revision
 from drive import model_metadata, download
+from participants import builtin_identity
 
 def main():
     config = read(ROOT / "arena.json")
@@ -17,6 +18,11 @@ def main():
     for player in config["players"]:
         p = dict(player)
         try:
+            if p.get('kind')=='official_rulebot':
+                signature=builtin_identity(p['bot'],read(ROOT/'fixture_manifest.json',{}))
+                p.update(status='ready',sha256=signature,size_bytes=0,filename='老師原版 '+p['code']+' 規則程式',message='官方固定規則對手 · 不需上傳ZIP',source='official_assignment')
+                players.append(p)
+                continue
             files = model_metadata(p["folder"])
             if not files: p.update(status="waiting", message="等待上傳模型ZIP")
             elif len(files) != 1: p.update(status="ambiguous", message="有多個ZIP，請只保留一個最強模型；也可用Drive的管理版本功能取代檔案")
@@ -39,7 +45,7 @@ def main():
                 "inference": "native SB3 policy.predict, CPU, one Torch thread",
                 "ranking": "(wins + 0.5 draws) / games; equal scores share rank",
                 "game_hash": read(ROOT / "fixture_manifest.json", {}).get("envs/game.py", "pending"),
-                "engine_revision": digest(ROOT / "arena/worker.py")}
+                "engine_revision": engine_revision(ROOT)}
     jobs = []; active_pairs = []; old = {p["key"]: p for p in previous.get("pairs", [])}
     for a, b in itertools.combinations(players, 2):
         if a["status"] != "ready" or b["status"] != "ready": continue
@@ -53,6 +59,7 @@ def main():
     # then. Never mix a newly replaced file into a previously frozen match.
     required={p["id"]:p for job in jobs for p in (job["a"],job["b"])}
     for pid,p in required.items():
+        if p.get('kind')=='official_rulebot':continue
         target=models/(pid+".zip")
         if not target.exists():
             download(p["file_id"],target);downloads+=1
@@ -66,12 +73,15 @@ def main():
              "protocol": protocol, "queued_pairs": len(jobs), "standings": [], "total_games": 0,
              "status": "running" if jobs else "ready" if active_pairs else "waiting",
              "history_count": previous.get("history_count",0), "cloud_run": os.getenv("GITHUB_RUN_ID"),
+             "expected_pairs":len(players)*(len(players)-1)//2,"expected_games":len(players)*(len(players)-1)//2*100,
+             "worker_source_sha256":digest(ROOT/'arena/worker.py'),
+             "controller_contracts":{"model":"native SB3 policy.predict, deterministic, raw84, CPU one thread","official_rulebot":"老師原版rusher_bot_action/sniper_bot_action，直接使用raw84，僅適配predict介面；非神經模型"},
              "notice": "每5分鐘輕量檢查Drive修訂資訊；只在換版時下載並比賽，沒有變更不重錄或重發網站。每天有一次SHA內容複核。排程可能延遲。"}
     write(data / "latest.json", state)
     write(ROOT / "runtime/planned_state.json",state)
     write(ROOT / "runtime/plan.json", {"jobs": jobs, "protocol": protocol})
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as out: out.write(f"changed={'true' if jobs else 'false'}\npublish={'true' if publish else 'false'}\n")
-    print(f"Roster: {sum(p['status']=='ready' for p in players)}/4 ready; {len(jobs)} changed pair(s); ZIP downloads={downloads}; publish={publish}.")
+    print(f"Roster: {sum(p['status']=='ready' for p in players)}/{len(players)} ready; {len(jobs)} changed pair(s); ZIP downloads={downloads}; publish={publish}.")
 
 if __name__ == "__main__": main()

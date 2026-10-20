@@ -4,7 +4,7 @@
 
 ## 賽制
 
-- 四人六個配對，每對50個公開固定、分散的physical seeds，各交換座位一次，合計100場、全輪600場。
+- 四位同學與老師Rusher／Sniper共六席十五個配對；每對50個公開固定、分散的physical seeds，各交換座位一次，合計100場、全輪1500場。老師對手直接呼叫官方規則程式，不是模仿老師的神經模型。
 - 雙方相同原版game.py、raw84輸入、native policy.predict(deterministic=True)、CPU單執行緒、1500tick上限。兩百萬policy參數上限。沒有同學權重訓練、人工改動作或額外資訊。
 - 排名使用 `(勝 + 0.5 × 和) / 已完成場數`；完全相同比率同名次。未完成全輪時顯示暫列，缺模型或載入失敗不直接判輸。
 - 每對手、座位拆分、W/L/D、勝率、積分率、physical-seed成群bootstrap區間、10場match、局長、原始事件與模型SHA可查。固定公開測試集的成績不能保證未知對手。
@@ -39,3 +39,12 @@
 正常檢查改由 `poll-clock.yml` 的GitHub environment五分鐘server-side wait timer接續觸發 `league.yml`，同時安排下一個clock。等待期間不分配runner、不在電腦或VM內sleep；公開repository免費wait timer，使用本次job的短效GITHUB_TOKEN，不新增私人PAT。單一clock concurrency避免多條輪詢鏈；league單一concurrency避免重疊比賽。clock在17/47分有cron後備重啟、league每小時02分有獨立後備檢查。GitHub若整體API/runner/環境計時服務停擺仍可能延遲，不能保證外部平台永不故障。
 
 網站每分鐘重讀已發布結果；五分鐘讀一次公開run狀態（手動刷新立即重讀）。顯示最近成功檢查、當前執行、下次clock預期時間、超時/失敗/API不可確認；不把過時成績叫做「已檢查但沒變更」。若要停止自動化，在Actions停用「五分鐘雲端時鐘」及「雲端賽事中心」兩workflow。沒有模型變更時維持manifest metadata-only快速檢查，無ZIP下載/遊戲/錄影/重新發布。
+
+
+## 老師對手與20場觀看導覽
+
+Rusher、Sniper列入同一排行榜，採老師原版raw84規則程式。官方source SHA與介面adapter SHA組成版本身分；無ZIP下載、無訓練或新增特權資訊。公開頁面只公開source雜湊與統計，不散布官方原始碼。兩兩比100場/50seed雙座位，包含Rusher對Sniper；第四位同學未上傳時明標暫列，不假造1500場。模型版本CSV另註明official_rulebot，非神經參數。
+
+每配對仍保留100場完整狀態重播/動作觀測/數據，只轉最多4段MP4。預設20場觀看導覽：12個不看勝敗的固定seed（雙座位各6）＋最多8個勝敗/和局/逆轉/復活/雷射/長短局案例，整份清單雙座位各10；不足類別以接近中位局長補齊。導覽是行為觀察入口，不是勝率估計樣本；排名/信賴區間/CSV一律使用100場。可切回全部100場查任意seed。最多15×4=60段MP4，不把1500場逐一轉成MP4；狀態重播更省空間，實際容量與耗時仍以雲端紀錄為準。
+
+舊同學配對沿用的前提：worker中原ZIP-vs-ZIP的load/play/audit/visual/render核心AST雜湊完全符合已保存相容錨點，使用原engine revision；任何核心改變就自動失效重測。新增官方controller的實作/原文身分另進bot版本雜湊。worker完整source SHA另記manifest，並非隱瞞程式改版或讓不相容結果混入。新的導覽由既有100份事件表產生，不重新玩遊戲。

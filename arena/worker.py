@@ -17,6 +17,7 @@ import train_astro_party  # resolves the participant's portable extractor names
 from eval_astro_party import load_model, decode_action
 from envs.game import AstroPartyGame, WALLS, SHIP_POLY_LOCAL, ASTRONAUT_POLY_LOCAL
 from envs.render import Renderer
+from participants import BUILTINS,builtin_identity,OfficialRulePolicy
 
 torch.set_num_threads(1)
 
@@ -152,6 +153,12 @@ def render_selected(row, output):
     renderer.close()
     return {"game_id":row["id"],"path":"videos/"+name,"replay_matches_original":True}
 
+def load_builtin(player):
+    kind=player['bot']
+    hashes={name:hashlib.sha256((Path('/official')/name).read_bytes()).hexdigest() for name in BUILTINS[kind]}
+    if builtin_identity(kind,hashes)!=player['sha256']:raise ValueError('Official bot source SHA mismatch')
+    return OfficialRulePolicy(kind),dict(algorithm_loaded_as='Official RuleBot',policy='Original official rule bot',parameters=0,kind='official_rulebot',source_hashes=hashes,note='固定規則程式，非神經網路或新訓練模型')
+
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument("--job"); parser.add_argument("--self-test",action="store_true"); args = parser.parse_args()
     if args.self_test:
@@ -170,7 +177,16 @@ def main():
         rows = [play(models,job,907331,seat,output) for seat in ("ship1","ship2")]
         videos = [render_selected(row,output) for row in rows]
         assert all(v["replay_matches_original"] for v in videos)
-        print(json.dumps({"cloud_self_test":"passed","diagnostic_games":2,"ranking_games":0,"training_updates":0,"swapped_seats":True,"official_mp4_replay_matches":True}))
+        from models.rusher_bot import rusher_bot_action
+        from models.sniper_bot import sniper_bot_action
+        bots={k:OfficialRulePolicy(k) for k in ('rusher','sniper')}
+        game=AstroPartyGame();game.reset(907331)
+        for k,original in [('rusher',rusher_bot_action),('sniper',sniper_bot_action)]:
+            for sid in ('ship1','ship2'):assert np.array_equal(bots[k].predict(game.observe(sid))[0],original(game.observe(sid)))
+        bot_job={'a':{'id':'rusher'},'b':{'id':'sniper'}}
+        bot_rows=[play(bots,bot_job,907332,seat,output) for seat in ('ship1','ship2')]
+        assert all(render_selected(row,output)['replay_matches_original'] for row in bot_rows)
+        print(json.dumps({"cloud_self_test":"passed","diagnostic_games":4,"ranking_games":0,"training_updates":0,"official_bots_exact_actions":True,"swapped_seats":True,"official_mp4_replay_matches":True}))
         return
     if not args.job: parser.error("--job is required for league matches")
     job = json.loads(Path(args.job).read_text()); output = Path("/out")
@@ -178,6 +194,9 @@ def main():
     contract_check()
     models = {}; identities = {}
     for player in (job["a"],job["b"]):
+        if player.get('kind')=='official_rulebot':
+            models[player['id']],identities[player['id']]=load_builtin(player)
+            continue
         path = Path("/models") / (player["id"]+".zip")
         if hashlib.sha256(path.read_bytes()).hexdigest() != player["sha256"]: raise ValueError("模型SHA在比賽前改變")
         models[player["id"]], identities[player["id"]] = load(path)

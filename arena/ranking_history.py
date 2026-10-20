@@ -21,7 +21,7 @@ def snapshot(state, recorded_at=None):
     key=hashlib.sha256(json.dumps(competitive,sort_keys=True,separators=(',',':')).encode()).hexdigest()[:24]
     return dict(key=key,recorded_at=recorded_at or state.get('recorded_at') or state.get('updated_at'),players=rows,pairs=pairs,
                 total_games=state.get('total_games') or sum(r['games'] for r in rows)//2,
-                complete_round_robin=bool(state.get('complete_round_robin') or len(pairs)==6),protocol=protocol)
+                complete_round_robin=bool(state.get('complete_round_robin',len(pairs)==len(people)*(len(people)-1)//2)),protocol=protocol)
 
 
 def update_history(previous, archived, state):

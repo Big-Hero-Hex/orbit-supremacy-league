@@ -7,6 +7,7 @@ import tempfile
 from aggregate import export_csv, export_tables, standings, summarize
 from ranking_history import update_history, export_history
 from common import ROOT, next_check, now, read, write
+from highlights import viewing_guide
 
 def main():
     plan = read(ROOT/"runtime/plan.json")
@@ -60,7 +61,12 @@ def main():
     state["failures"] = failures
     state["standings"] = standings(state["players"],state["pairs"])
     state["total_games"] = sum(len(p["games"]) for p in state["pairs"])
-    state["complete_round_robin"] = len(state["pairs"])==6 and state["total_games"]==600
+    expected=len(state['players'])*(len(state['players'])-1)//2
+    state['expected_pairs']=expected;state['expected_games']=expected*100
+    state["complete_round_robin"] = len(state["pairs"])==expected and state["total_games"]==expected*100
+    for pair in state['pairs']:
+        pair['viewing_guide']=viewing_guide(pair['games'],pair['a'],pair['b'])
+        write(ROOT/'site/data/pairs'/pair['key']/'result.json',pair)
     state["status"] = "complete" if state["complete_round_robin"] else "partial" if state["pairs"] else "waiting"
     state["updated_at"] = now()
     state["next_scheduled_check"] = next_check()

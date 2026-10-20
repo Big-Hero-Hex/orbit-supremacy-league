@@ -124,5 +124,5 @@ def export_tables(folder, state):
     models=[]
     for p in state["players"]:
         info=next((q["model_info"][p["id"]] for q in state["pairs"] if p["id"] in q.get("model_info",{})),{})
-        models.append({"player_id":p["id"],"name":p["name"],"status":p["status"],"filename":p.get("filename"),"sha256":p.get("sha256"),"size_bytes":p.get("size_bytes"),"parameters":info.get("parameters"),"content_verified_at":p.get("content_verified_at")})
-    table("models.csv",models,["player_id","name","status","filename","sha256","size_bytes","parameters","content_verified_at"])
+        models.append({"player_id":p["id"],"name":p["name"],"status":p["status"],"filename":p.get("filename"),"sha256":p.get("sha256"),"size_bytes":p.get("size_bytes"),"parameters":info.get("parameters"),"content_verified_at":p.get("content_verified_at"),"participant_kind":p.get('kind','neural_model'),"controller_source":p.get('source','participant_uploaded_zip')})
+    table("models.csv",models,["player_id","name","status","filename","sha256","size_bytes","parameters","content_verified_at","participant_kind","controller_source"])

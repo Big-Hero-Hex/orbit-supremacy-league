@@ -45,7 +45,7 @@ jobs:
             fi
             cp site/data/latest.json runtime/previous_manifest.json
           fi
-      - name: Check the four model folders and freeze hashes
+      - name: Check participant folders and official rule-bot hashes
         id: plan
         run: python arena/plan.py
       - name: Restore recordings only when publication is needed

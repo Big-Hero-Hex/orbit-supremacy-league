@@ -1,5 +1,6 @@
 """Trusted league orchestration. No policy loading in this process."""
 import hashlib
+import ast
 import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -45,3 +46,14 @@ def seeds(namespace, count=50):
 def pair_key(a, b, protocol):
     raw = json.dumps([a["id"], a["sha256"], b["id"], b["sha256"], protocol], sort_keys=True)
     return hashlib.sha256(raw.encode()).hexdigest()[:28]
+
+def engine_revision(root=ROOT):
+    """Keep old pair caches only while the original policy match core is exact."""
+    worker=Path(root)/'arena/worker.py'
+    anchor=read(Path(root)/'arena/engine_compat.json',{})
+    if anchor:
+        nodes=ast.parse(worker.read_text(encoding='utf-8')).body
+        core=ast.dump(ast.Module(body=[n for n in nodes if isinstance(n,(ast.FunctionDef,ast.ClassDef)) and n.name in anchor['locked_functions']],type_ignores=[]),include_attributes=False)
+        if hashlib.sha256(core.encode()).hexdigest()==anchor['policy_match_core_sha256']:
+            return anchor['legacy_worker_sha256']
+    return digest(worker)
