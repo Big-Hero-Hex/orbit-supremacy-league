@@ -1,0 +1,15 @@
+{
+  "title": "天穹爭霸聯賽",
+  "english_title": "ORBIT SUPREMACY LEAGUE",
+  "season": "OSL · SEASON 01",
+  "drive_folder": "1M0-FFjvYDUL6MZgT7PTA5OhpojxSguxa",
+  "repository": "JasonLiaoJCS/orbit-supremacy-league",
+  "seed_namespace": "OSL-S01-fair-paired-50-v1",
+  "games_per_pair": 100,
+  "players": [
+    {"id":"liao", "name":"廖格致", "code":"LIAO", "folder":"1fWXipLaUFsN4_Q1Ikbfh0PQCtRtzce-1", "color":"#8bffb0"},
+    {"id":"lee9", "name":"李9ay", "code":"LEE9", "folder":"1VpAQfvckspGcEJQsGlIaU6yc4tg_uXMT", "color":"#9caaff"},
+    {"id":"yang", "name":"楊興邦", "code":"YANG", "folder":"1pe5HSUoGopeni8youTXsMyRpFt5Rtp2V", "color":"#ffc277"},
+    {"id":"lee", "name":"李舒偉", "code":"LEE", "folder":"1HQ6PH-eQqK0iLhEAsPbNshObpkoHenHY", "color":"#ff8ca7"}
+  ]
+}

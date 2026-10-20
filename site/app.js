@@ -1,0 +1,86 @@
+const $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pct=n=>Number.isFinite(n)?`${(n*100).toFixed(1)}%`:'—', num=n=>Number.isFinite(n)?n.toLocaleString('zh-TW',{maximumFractionDigits:1}):'—';
+const date=t=>t?new Date(t).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false}):'尚無';
+const clock=t=>`${Math.floor(t/60).toString().padStart(2,'0')}:${Math.floor(t%60).toString().padStart(2,'0')}`;
+let data=null,pair=null,selected=null,recording=null,playing=false,position=0,anchor=0,loadingToken=0;
+const name=id=>data?.players.find(p=>p.id===id)?.name??id, player=id=>data.players.find(p=>p.id===id);
+const base=()=>`data/pairs/${pair.key}/`;
+function node(id,html){$(id).innerHTML=html;}
+function nextSlot(t){const d=new Date(t);d.setUTCSeconds(0,0);d.setUTCMinutes(d.getUTCMinutes()+1);while(d.getUTCMinutes()%10!==3)d.setUTCMinutes(d.getUTCMinutes()+1);return d.getTime();}
+function countdown(){if(!data)return;const next=data.next_scheduled_check?Date.parse(data.next_scheduled_check):nextSlot(data.checked_at), diff=Math.ceil((next-Date.now())/1000);$('countdown').textContent=diff>0?clock(diff):'等待雲端執行';$('nextCheck').textContent=`預定 ${new Date(next).toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})} 台北時間 · 可能延遲`;}
+async function refresh(){
+ $('refresh').disabled=true;
+ try{const response=await fetch('data/latest.json',{cache:'no-cache'});if(!response.ok)throw Error(response.status);const incoming=await response.json();const oldKey=pair?.key;data=incoming;
+ $('cloudState').textContent=({complete:'全輪戰績已就緒',running:'雲端比賽進行中',partial:'部分賽事已完成',waiting:'競技場就緒 · 等待模型'})[data.status]??'讀取雲端狀態';
+ $('updated').textContent=`最後檢查 ${date(data.checked_at)} · 已發布 ${date(data.updated_at)}`;
+ $('totalGames').textContent=String(data.total_games??0).padStart(3,'0');
+ $('rankingScope').textContent=data.complete_round_robin?'完整600場 · 目前版本':data.total_games?'暫列 · 全輪尚未完成':'等待參賽模型';
+ $('cloudLink').href=`https://github.com/${data.repository}/actions/workflows/league.yml`;
+ $('driveRoot').href=`https://drive.google.com/drive/folders/${data.drive_folder}`;
+ $('notice').textContent=(data.failures?.length?`${data.failures.length}組配對未完成，沒有直接判輸。請查看雲端賽程。 `:'')+'比賽、推論與錄影全在GitHub雲端執行。關機不影響；本頁只顯示已發布結果。';
+ renderStandings();renderMatrix();renderModels();
+ const keep=data.pairs.find(p=>p.key===oldKey); if(keep){pair=keep;renderTabs();renderGames();renderStats();}else if(data.pairs.length)choosePair(data.pairs[0].key);else{pair=null;renderTabs();renderStats();}
+ countdown();
+ }catch(error){$('cloudState').textContent='暫時無法取得最新結果';$('notice').textContent='雲端資料連線暫時失敗，既有結果不代表更新已完成。請稍後刷新。';console.error(error);}
+ finally{$('refresh').disabled=false;}
+}
+function renderStandings(){
+ const rows=data.standings??[];
+ node('leaderboard',rows.length?rows.map(r=>{const p=player(r.id);return `<article class="leader-row" style="--team:${esc(p.color)}"><div class="rank">${String(r.rank).padStart(2,'0')}</div><div><span class="player-code">${esc(p.code)}</span><span class="player-name">${esc(p.name)}</span></div><div><span class="label">每場積分率</span><b class="number">${pct(r.score_rate)}</b><div class="bar"><i style="width:${r.score_rate*100}%"></i></div></div><div><span class="label">勝 / 敗 / 和</span><b>${r.wins} / ${r.losses} / ${r.draws}</b></div><div><span class="label">勝率</span><b class="number">${pct(r.win_rate)}</b></div><div><span class="label">場次</span><b>${r.games}</b></div></article>`;}).join(''):'<div class="panel empty">四席已定，鋒芒待試。上傳模型後，雲端將自動排入對戰；目前沒有真實比賽成績。</div>');
+ const labels={waiting:'等待模型',ambiguous:'需要保留單一ZIP',ready:'模型已就位',error:'讀取失敗'};
+ node('roster',data.players.map(p=>`<article class="roster-card" style="--team:${esc(p.color)}"><span class="code">${esc(p.code)}</span><h3>${esc(p.name)}</h3><span class="tag ${p.status==='ready'?'green':''}">${labels[p.status]??esc(p.status)}</span><p>${esc(p.message??p.filename??'')}</p><a href="https://drive.google.com/drive/folders/${esc(p.folder)}" target="_blank" rel="noopener">前往個人上傳席 ↗</a></article>`).join(''));
+}
+function renderMatrix(){node('matrixTable',`<table><thead><tr><th>列選手勝率 ↓</th>${data.players.map(p=>`<th>${esc(p.name)}</th>`).join('')}</tr></thead><tbody>${data.players.map(a=>`<tr><th>${esc(a.name)}</th>${data.players.map(b=>{if(a.id===b.id)return '<td class="faded">／</td>';const p=data.pairs.find(p=>[p.a,p.b].includes(a.id)&&[p.a,p.b].includes(b.id));if(!p)return '<td class="faded">未開賽</td>';const s=p.stats[a.id];return `<td class="matrix-cell" data-pair="${p.key}" title="95%區間 ${pct(s.win_rate_ci95[0])}–${pct(s.win_rate_ci95[1])}；點擊看對戰"><b>${pct(s.win_rate)}</b><small>${s.wins} / ${s.losses} / ${s.draws}</small></td>`;}).join('')}</tr>`).join('')}</tbody></table>`);}
+function renderTabs(){node('pairTabs',data.pairs.length?data.pairs.map(p=>`<button class="pair-tab ${pair?.key===p.key?'active':''}" data-pair="${p.key}">${esc(name(p.a))} <span class="faded">vs</span> ${esc(name(p.b))} · ${p.stats[p.a].wins}:${p.stats[p.b].wins}</button>`).join(''):'<span class="tag">尚無完成的配對 · 預計6組</span>');}
+function choosePair(key){pair=data.pairs.find(p=>p.key===key);if(!pair)return;selected=null;recording=null;playing=false;renderTabs();renderGames();renderStats();if(pair.games.length)chooseGame(pair.games[0].id);}
+function comeback(r){const first=r.timeline.find(e=>e.kind==='eject');return r.winner&&first?.target===r.winner;}
+function renderGames(){if(!pair)return;const seat=$('seatFilter').value,result=$('resultFilter').value,seed=$('seedFilter').value,sort=$('sortFilter').value;
+ let rows=pair.games.filter(r=>(!seat||r.a_seat===seat)&&(!seed||String(r.seed).includes(seed))&&(!result||result==='a'&&r.winner===pair.a||result==='b'&&r.winner===pair.b||result==='draw'&&r.winner===null||result==='comeback'&&comeback(r)||result==='long'&&(r.ticks>=750||r.timeline.some(e=>e.kind==='respawn'))));
+ rows.sort((a,b)=>sort==='long'?b.ticks-a.ticks:sort==='short'?a.ticks-b.ticks:a.seed-b.seed||a.a_seat.localeCompare(b.a_seat));
+ $('gameCount').textContent=`${rows.length} / 100 場`;
+ node('gameList',rows.length?rows.map(r=>`<button class="game-row ${selected?.id===r.id?'active':''}" data-game="${r.id}"><span class="win-mark">${r.winner?esc(name(r.winner))+' 勝':'和局'}</span><strong>SEED ${r.seed}</strong><div class="row-meta"><span>${esc(name(pair.a))}在${r.a_seat==='ship1'?'藍':'紅'}方</span><span>${r.seconds.toFixed(2)}秒 ${comeback(r)?' · 逆轉':''}${r.timeline.some(e=>e.kind==='respawn')?' · 復活':''}</span></div></button>`).join(''):'<p class="empty">沒有符合篩選條件的對局。</p>');}
+async function chooseGame(id){
+ if(!pair)return;selected=pair.games.find(r=>r.id===id);if(!selected)return;const token=++loadingToken;playing=false;recording=null;position=0;$('mp4').pause();$('mp4').hidden=true;$('arena').hidden=false;$('screenEmpty').hidden=false;
+ $('screenEmpty').querySelector('h3').textContent='載入雲端重播…';$('screenEmpty').querySelector('p').textContent=`SEED ${selected.seed} · 不在裝置上跑模型`;
+ $('bluePlayer').textContent=`● ${name(selected.assignment.ship1)}`;$('bluePlayer').style.color='var(--blue)';$('redPlayer').textContent=`${name(selected.assignment.ship2)} ●`;$('redPlayer').style.color='var(--red)';
+ $('scoreTitle').textContent=selected.winner?`${name(selected.winner)} 勝`:'和局';
+ $('gameCaption').textContent=`SEED ${selected.seed} · ${selected.ticks} ticks / ${selected.seconds.toFixed(2)} 秒 · 真實狀態錄製，非瀏覽器模擬`;
+ const labels={eject:'擊落',kill:'終結',respawn:'復活',pickup:'取得雷射',asteroid_hit:'擊中小行星'};
+ node('gameEvents',selected.timeline.filter(e=>e.kind!=='asteroid_hit').map(e=>`<button class="event-chip" data-tick="${e.tick}">${(e.tick/50).toFixed(2)}s ${esc(name(e.by))} ${labels[e.kind]??esc(e.kind)}${e.target?' '+esc(name(e.target)):''}</button>`).join(''));
+ const mp4=pair.videos.find(v=>v.game_id===id);
+ node('downloads',`<a href="${base()}${selected.audit}" download>動作／觀測 NPZ ↗</a><a href="${base()}${selected.replay}" download>狀態重播 GZIP ↗</a><a href="${base()}results.csv" download>此配對逐局 CSV ↗</a>${mp4?`<button class="text-link" id="mp4Button">播放官方畫面 MP4 ↗</button>`:''}`);
+ if(mp4)$('mp4Button').onclick=()=>{playing=false;$('mp4').src=base()+mp4.path;$('mp4').hidden=false;$('arena').hidden=true;$('mp4').play().catch(()=>{});};
+ renderGames();
+ try{const response=await fetch(base()+selected.replay);if(!response.ok)throw Error(response.status);if(!window.DecompressionStream)throw Error('此瀏覽器不支援GZIP重播，請改用新版Chrome／Edge或MP4');
+ const stream=response.body.pipeThrough(new DecompressionStream('gzip'));const record=await new Response(stream).json();if(token!==loadingToken)return;recording=record;$('screenEmpty').hidden=true;draw(0);$('timeLabel').textContent=`00:00 / ${clock(selected.seconds)}`;
+ }catch(error){if(token!==loadingToken)return;$('screenEmpty').querySelector('h3').textContent='重播暫時無法載入';$('screenEmpty').querySelector('p').textContent=String(error.message);}
+}
+const canvas=$('arena'),ctx=canvas.getContext('2d');
+function draw(seconds){if(!recording)return;const tick=Math.min(recording.ticks,seconds*50);let low=0,high=recording.frames.length-1;while(low<high){const mid=Math.ceil((low+high)/2);if(recording.frames[mid].t<=tick)low=mid;else high=mid-1;}const f=recording.frames[low];ctx.fillStyle='#06060e';ctx.fillRect(0,0,1200,800);
+ ctx.fillStyle='#999';for(let i=0;i<100;i++){const x=(i*371+89)%1200,y=(i*197+47)%800;ctx.fillRect(x,y,1,1);}
+ for(const [x,y,hw,hh]of recording.walls){ctx.fillStyle='#46372d';ctx.fillRect(x-hw,y-hh,hw*2,hh*2);ctx.strokeStyle='#d7641e';ctx.strokeRect(x-hw,y-hh,hw*2,hh*2);}
+ circle(600,400,100,'#46464e','#6e6e78');for(let i=0;i<8;i++){const a=i*2.39;circle(600+Math.cos(a)*65,400+Math.sin(a)*61,8+(i%3)*3,'#32323a');}
+ for(const [x,y,r,hp]of f.a){circle(x,y,r,'#969696','#e6e6e6');ctx.fillStyle='#333';ctx.font='14px monospace';ctx.fillText(String(hp),x-4,y+5);}
+ for(const [x,y,active]of f.p)if(active){ctx.fillStyle='#3cdddd';ctx.beginPath();ctx.moveTo(x,y-14);ctx.lineTo(x+14,y);ctx.lineTo(x,y+14);ctx.lineTo(x-14,y);ctx.closePath();ctx.fill();}
+ for(const [x,y]of f.b)circle(x,y,4,'#ffe65a');
+ for(const [kind,pos,end,r,timer]of f.e){if(kind==='laser'){ctx.strokeStyle='#aacfff';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(...pos);ctx.lineTo(...end);ctx.stroke();ctx.lineWidth=1;}else{circle(...pos,r*(.6+1.4*(1-timer/20)),null,'#ffad55');}}
+ f.s.forEach((s,i)=>{const[x,y,angle,alive,pilot,ammo,cd,laser,respawn]=s;if(!alive)return;const color=i?'#e65a5a':'#5096eb',poly=pilot?recording.pilot_polygon:recording.ship_polygon;ctx.save();ctx.translate(x,y);ctx.rotate(angle);ctx.beginPath();poly.forEach(([px,py],j)=>j?ctx.lineTo(px,py):ctx.moveTo(px,py));ctx.closePath();ctx.fillStyle=pilot?'#dedacd':color;ctx.fill();ctx.strokeStyle=color;ctx.stroke();ctx.restore();if(pilot){ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=2;ctx.arc(x,y,14,-Math.PI/2,-Math.PI/2+(1-respawn/200)*Math.PI*2);ctx.stroke();ctx.lineWidth=1;}});
+ ctx.font='bold 17px sans-serif';f.s.forEach((s,i)=>{ctx.fillStyle=i?'#ff8a8a':'#87bafa';const text=`${name(recording.assignment[i?'ship2':'ship1'])}  ${s[3]?(s[4]?`飛行員 · ${(s[8]/50).toFixed(1)}s復活`:`彈藥 ${s[5]}/3${s[7]?' · LASER':''}`):'已淘汰'}`;ctx.fillText(text,i?710:25,780);});
+ position=tick/50;$('seek').value=String(position/selected.seconds*1000);$('timeLabel').textContent=`${clock(position)} / ${clock(selected.seconds)}`;
+}
+function circle(x,y,r,fill,stroke){ctx.beginPath();ctx.arc(x,y,Math.max(0,r),0,2*Math.PI);if(fill){ctx.fillStyle=fill;ctx.fill();}if(stroke){ctx.strokeStyle=stroke;ctx.stroke();}}
+function animate(t){if(playing&&recording){if(!anchor)anchor=t;const delta=(t-anchor)/1000*Number($('speed').value);anchor=t;draw(position+delta);if(position>=selected.seconds){playing=false;$('play').textContent='▶';}}else anchor=0;requestAnimationFrame(animate);}
+function scopedStats(){if($('statsScope').value==='pair'&&pair)return Object.entries(pair.stats).map(([id,r])=>({...r,id}));return data?.standings??[];}
+function renderStats(){if(!data)return;const rows=scopedStats(),games=$('statsScope').value==='pair'&&pair?pair.games:data.pairs.flatMap(p=>p.games);const totalShots=rows.reduce((n,r)=>n+r.metrics.gun_shots+r.metrics.laser_shots,0),respawns=rows.reduce((n,r)=>n+r.metrics.respawns,0);
+ const cards=[['總對局數',num(games.length),'只計已完成對局'],['平均局長',games.length?`${(games.reduce((s,r)=>s+r.seconds,0)/games.length).toFixed(2)}s`:'—','每tick = 0.02秒'],['實際武器發射',num(totalShots),'一般子彈 + 雷射'],['成功復活次數',num(respawns),'實際respawn事件']];
+ node('metrics',cards.map(c=>`<article class="metric-card"><span>${c[0]}</span><b>${c[1]}</b><small>${c[2]}</small></article>`).join(''));
+ const fields=[['對局數',r=>r.games],['勝 / 敗 / 和',r=>`${r.wins} / ${r.losses} / ${r.draws}`],['勝率',r=>pct(r.win_rate)],['積分率（和局0.5）',r=>pct(r.score_rate)],['勝率95%成群抽樣區間',r=>`${pct(r.win_rate_ci95[0])}–${pct(r.win_rate_ci95[1])}`],['實際一般子彈',r=>num(r.metrics.gun_shots)],['實際雷射',r=>num(r.metrics.laser_shots)],['射擊請求（含無法發射）',r=>num(r.metrics.fire_requests)],['武器對玩家有效命中',r=>num(r.metrics.weapon_hits)],['擊落敵船',r=>num(r.metrics.ejects)],['武器終結飛行員',r=>num(r.metrics.pilot_weapon_kills)],['撞殺終結',r=>num(r.metrics.ram_kills)],['取得雷射道具',r=>num(r.metrics.pickups)],['成功復活',r=>num(r.metrics.respawns)],['飛行員活動秒數',r=>num(r.metrics.pilot_ticks/50)],['空彈且無雷射占船型時間',r=>pct(r.metrics.ship_ticks?r.metrics.empty_ammo_ticks/r.metrics.ship_ticks:0)],['平均推論時間（每局平均再平均）',r=>`${r.metrics.inference_mean_ms.toFixed(3)}ms`]];
+ node('detailedStats',rows.length?`<table><thead><tr><th>指標</th>${rows.map(r=>`<th>${esc(name(r.id))}</th>`).join('')}</tr></thead><tbody>${fields.map(([label,fn])=>`<tr><td>${label}</td>${rows.map(r=>`<td>${fn(r)}</td>`).join('')}</tr>`).join('')}</tbody></table>`:'<p class="empty">等待真實比賽資料；尚未產生任何戰鬥統計。</p>');
+ if(pair){node('seatStats',`<table><thead><tr><th>選手</th><th>藍方 勝/敗/和</th><th>藍方勝率</th><th>紅方 勝/敗/和</th><th>紅方勝率</th><th>平均局長</th></tr></thead><tbody>${[pair.a,pair.b].map(id=>{const b=pair.seats[id].ship1,r=pair.seats[id].ship2;return `<tr><td>${esc(name(id))}</td><td>${b.wins}/${b.losses}/${b.draws}</td><td>${pct(b.win_rate)}</td><td>${r.wins}/${r.losses}/${r.draws}</td><td>${pct(r.win_rate)}</td><td>${pair.duration.mean.toFixed(2)}s</td></tr>`;}).join('')}</tbody></table>`);node('matchStats',pair.matches.map((m,i)=>`<span class="match-box" title="${esc(m.seeds.join(', '))}">M${i+1} · ${m.a_seat==='ship1'?'藍':'紅'} · ${m.a_wins}:${m.b_wins}${m.draws?' 和'+m.draws:''} · ${m.winner?esc(name(m.winner))+'勝':'平手'}</span>`).join(''));}else{node('seatStats','<p class="empty">選取配對後可查看雙座位比較。</p>');node('matchStats','');}
+}
+function renderModels(){node('modelRegistry',`<table><thead><tr><th>選手</th><th>目前檔名</th><th>SHA256（完整可選取複製）</th><th>參數量</th><th>狀態</th></tr></thead><tbody>${data.players.map(p=>{const info=data.pairs.find(q=>q.model_info?.[p.id])?.model_info?.[p.id];return `<tr><td>${esc(p.name)}</td><td>${esc(p.filename??'尚未上傳')}</td><td><code>${esc(p.sha256??'—')}</code></td><td>${info?num(info.parameters):'待雲端載入'}</td><td>${esc(p.message??p.status)}</td></tr>`;}).join('')}</tbody></table>`);}
+async function history(){try{const r=await fetch('data/history.json',{cache:'no-cache'}),rows=await r.json();node('historyList',rows.length?rows.slice().reverse().map(h=>`<div><p>${date(h.recorded_at)}</p><table><tr><th>名次</th><th>選手</th><th>勝/敗/和</th><th>積分率</th><th>版本SHA</th></tr>${h.standings.map(s=>`<tr><td>${s.rank}</td><td>${esc(h.players.find(p=>p.id===s.id)?.name)}</td><td>${s.wins}/${s.losses}/${s.draws}</td><td>${pct(s.score_rate)}</td><td><code>${esc(h.players.find(p=>p.id===s.id)?.sha256?.slice(0,16))}</code></td></tr>`).join('')}</table></div>`).join(''):'<p>尚無歷史換版成績。第一次完成對戰後，換版時會保留。</p>');}catch{node('historyList','<p>歷史成績暫時無法讀取。</p>');}}
+$('refresh').onclick=refresh;for(const id of ['seatFilter','resultFilter','seedFilter','sortFilter'])$(id).addEventListener(id==='seedFilter'?'input':'change',renderGames);$('statsScope').onchange=renderStats;
+document.addEventListener('click',event=>{const p=event.target.closest('[data-pair]');if(p){choosePair(p.dataset.pair);if(p.tagName==='TD')$('broadcast').scrollIntoView({behavior:'smooth'});}const g=event.target.closest('[data-game]');if(g)chooseGame(g.dataset.game);const t=event.target.closest('[data-tick]');if(t&&recording){playing=false;draw(Math.max(0,Number(t.dataset.tick)/50-.3));$('play').textContent='▶';}});
+$('play').onclick=()=>{if(!recording)return;if(position>=selected.seconds)position=0;playing=!playing;anchor=0;$('play').textContent=playing?'❚❚':'▶';};$('seek').oninput=()=>{if(recording){playing=false;draw(Number($('seek').value)/1000*selected.seconds);$('play').textContent='▶';}};$('fullScreen').onclick=()=>{$('arena').parentElement.requestFullscreen?.().catch(()=>{});};
+document.querySelector('.history-panel').addEventListener('toggle',event=>{if(event.target.open)history();});setInterval(countdown,1000);setInterval(()=>{if(!document.hidden)refresh();},60000);requestAnimationFrame(animate);refresh();

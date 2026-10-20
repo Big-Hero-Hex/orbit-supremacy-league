@@ -1,0 +1,27 @@
+# OSL · 天穹爭霸聯賽
+
+四位參賽者，各在自己的Drive資料夾保留**一個SB3最強模型ZIP**。替換可刪舊上新，或用Drive「管理版本」上傳新版本；不依檔名猜最新模型。不需要上傳訓練程式、帳密或整個訓練資料夾。
+
+## 賽制
+
+- 四人六個配對，每對50個公開固定、分散的physical seeds，各交換座位一次，合計100場、全輪600場。
+- 雙方相同原版game.py、raw84輸入、native policy.predict(deterministic=True)、CPU單執行緒、1500tick上限。兩百萬policy參數上限。沒有同學權重訓練、人工改動作或額外資訊。
+- 排名使用 `(勝 + 0.5 × 和) / 已完成場數`；完全相同比率同名次。未完成全輪時顯示暫列，缺模型或載入失敗不直接判輸。
+- 每對手、座位拆分、W/L/D、勝率、積分率、physical-seed成群bootstrap區間、10場match、局長、原始事件與模型SHA可查。固定公開測試集的成績不能保證未知對手。
+- 命中計數只包含真的對玩家產生擊落/終結的武器命中；不把射擊請求當發射、不把撞殺算成槍法，也不把平均值當單局保證。
+
+## 雲端架構
+
+網站由GitHub Pages提供。GitHub標準hosted Linux runner每10分鐘檢查Drive，下載目前ZIP計算SHA，僅對變更的配對重跑。**完全不使用self-hosted runner，不把比賽或訓練移到訪客瀏覽器。**瀏覽器只顯示已錄製狀態或播放MP4，正常網頁/影片解碼仍需基本裝置資源。
+
+刷新網頁不是雲端執行觸發器。通常下一輪檢查及比賽完成後可看到新版；GitHub排程可能延遲。需要立即排入可在「雲端賽程」的GitHub頁面按Run workflow；token不會放在公開網站。
+
+官方檔案以Fernet加密fixture存放；解密金鑰只在GitHub Actions secret。公開repository不散布明文官方作業源碼或同學模型。執行模型的容器無網路、無token、非root、read-only根目錄、CPU/記憶體/執行時間限制。這保護雲端憑證，不把它宣稱為對惡意作弊模型的完整反作弊系統。
+
+每場保存gzip視覺狀態與動作/觀測NPZ，所有對局均可播放、拖曳、換倍速；每配對另外輸出勝/敗/和/最長局最多四段官方renderer MP4，重播結果/步數核對。Canvas只畫錄製狀態，不含遊戲物理或模型。當模型改版，保留歷史成績與hash；首頁只保存目前版本的完整重播，避免無限堆積影片。歷史重播不是永久保存承諾。
+
+目前標準public Actions compute免費，Pages免費；不使用付費大型runner或付費雲端服務。Artifact只留一天、單份current release、無Actions cache。仍受GitHub/Drive政策、儲存與流量限制。
+
+## 開發檢查
+
+`python -m unittest discover -s tests` 只驗賽程/統計/格式，不在本機載入模型或跑對戰。正式遊戲、載入與影片檢查在雲端執行。

@@ -1,0 +1,35 @@
+name: OSL · 雲端引擎驗證
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['arena/**', 'Dockerfile', 'fixture.enc', '.github/workflows/verify.yml', 'site/**', 'tests/**']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.10'}
+      - name: Statistics and schedule tests
+        run: |
+          python -m unittest discover -s tests -v
+          node --check site/app.js
+      - name: Decrypt read-only official fixture
+        env:
+          ARENA_FIXTURE_KEY: ${{ secrets.ARENA_FIXTURE_KEY }}
+        run: |
+          pip install cryptography==46.0.3
+          python arena/decrypt_fixture.py
+      - name: Build cloud engine
+        run: docker build --tag osl-worker .
+      - name: Native model / original physics / swapped seats / video boundary
+        run: >-
+          docker run --rm --network=none --read-only --cap-drop=ALL
+          --security-opt=no-new-privileges --pids-limit=128 --memory=4g --cpus=2
+          --tmpfs /tmp:rw,nosuid,size=512m --tmpfs /out:rw,nosuid,size=256m
+          -v "$PWD/runtime/official:/official:ro" osl-worker --self-test

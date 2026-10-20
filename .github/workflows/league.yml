@@ -1,0 +1,71 @@
+name: OSL · 雲端賽事中心
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '3,13,23,33,43,53 * * * *'
+
+concurrency:
+  group: osl-broadcast
+  cancel-in-progress: false
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  broadcast:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Restore previous broadcast
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p runtime
+          if gh release view arena-data >/dev/null 2>&1; then
+            gh release download arena-data --pattern site.tar.gz --dir runtime
+            tar -xzf runtime/site.tar.gz -C site
+          fi
+      - name: Install lightweight Drive reader
+        run: pip install 'gdown==5.2.0' 'cryptography==46.0.3'
+      - name: Check the four model folders and freeze hashes
+        id: plan
+        run: python arena/plan.py
+      - name: Decrypt official fixture on host
+        if: steps.plan.outputs.changed == 'true'
+        env:
+          ARENA_FIXTURE_KEY: ${{ secrets.ARENA_FIXTURE_KEY }}
+        run: python arena/decrypt_fixture.py
+      - name: Build credential-free evaluation image
+        if: steps.plan.outputs.changed == 'true'
+        run: docker build --tag osl-worker .
+      - name: Run original paired games in isolated container
+        run: python arena/run.py
+      - name: Update broadcast snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tar -czf runtime/site.tar.gz -C site data
+          if ! gh release view arena-data >/dev/null 2>&1; then
+            gh release create arena-data --title 'OSL latest broadcast data' --notes 'Current 100-game paired-seat tables, recordings and version history. No model weights.'
+          fi
+          gh release upload arena-data runtime/site.tar.gz --clobber
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+          retention-days: 1
+      - name: Publish OSL
+        id: deployment
+        uses: actions/deploy-pages@v4
