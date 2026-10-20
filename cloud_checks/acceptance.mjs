@@ -7,7 +7,7 @@ let state;
 // the preceding release and misreporting a missing new feature as a regression.
 for(let i=0;i<60;i++){
  state=await (await fetch(url+'data/latest.json?acceptance='+Date.now())).json();
- if(Array.isArray(state.ranking_history))break;
+ if(state.ranking_history?.length && state.ranking_history.every(p=>Array.isArray(p.model_updates)))break;
  await new Promise(resolve=>setTimeout(resolve,5000));
 }
 assert.ok(Array.isArray(state.ranking_history),'Requires ranking-history deployment');
@@ -24,9 +24,15 @@ try{
  assert.ok(state.ranking_history.length>=1);
  const expectedPoints=state.ranking_history.reduce((n,p)=>n+p.players.length,0);
  await page.selectOption('#rankingMetric','rank');assert.equal(await page.locator('#rankingChart circle').count(),expectedPoints);
+ assert.equal(await page.locator('#rankingChanges button').count(),state.ranking_history.length);
+ for(let i=0;i<state.ranking_history.length;i++){
+  await page.locator(`#rankingChanges button[data-index="${i}"]`).click();
+  assert.ok((await page.locator('#rankingDetail').textContent()).includes(state.ranking_history[i].change_summary));
+  assert.equal(await page.locator('#rankingDetail .version-change').count(),state.ranking_history[i].model_updates.length);
+ }
  await page.selectOption('#rankingMetric','score_rate');
  await page.locator('#ranking-history').screenshot({path:'runtime/real-acceptance/ranking-real.png'});
- const csv=await (await fetch(url+'data/ranking_history.csv?verify='+Date.now())).text();assert.ok(csv.includes('model_sha256'));assert.ok(csv.includes('廖格致'));
+ const csv=await (await fetch(url+'data/ranking_history.csv?verify='+Date.now())).text();assert.ok(csv.includes('model_sha256'));assert.ok(csv.includes('changed_player_names'));assert.ok(csv.includes('model_updates_json'));assert.ok(csv.includes('廖格致'));
  await page.locator(`[data-pair="${pair.key}"]`).first().click();
  await page.waitForFunction(()=>document.getElementById('screenEmpty').hidden===true);
  if(await page.locator('#watchSet').count())await page.selectOption('#watchSet','all');

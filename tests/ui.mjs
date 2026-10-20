@@ -46,6 +46,12 @@ try{
  await page.locator('#rankingLegend button').first().click();assert.equal(await page.locator('#rankingChart circle').count(),15);
  await page.locator('#rankingLegend button').first().click();assert.equal(await page.locator('#rankingChart circle').count(),18);
  await page.locator('#rankingChart circle').first().focus();assert.ok((await page.locator('#rankingDetail').textContent()).includes('2026'));
+ await page.locator('#rankingChanges button[data-index="1"]').click();
+ for(const p of fixture.state.players.slice(0,2))assert.ok((await page.locator('#rankingDetail').textContent()).includes(p.name+' 換版'));
+ assert.equal(await page.locator('#rankingDetail .version-change').count(),2);
+ await page.locator('#rankingChart circle[data-index="1"]').nth(2).focus();
+ assert.equal(await page.locator('#rankingDetail .version-change').count(),2,'third participant curve still lists both actual model updates');
+ results.push('History attribution: simultaneous updates list both names and old/new SHA even on another participant curve');
  await page.selectOption('#rankingMetric','points');assert.equal(await page.locator('#rankingHistoryTable tbody tr').count(),18);
  await page.locator('#ranking-history').screenshot({path:'runtime/ui-check/ranking-fixture-only.png'});
  await page.setViewportSize({width:390,height:844});

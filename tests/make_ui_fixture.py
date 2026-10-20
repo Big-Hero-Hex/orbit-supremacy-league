@@ -6,7 +6,7 @@ from pathlib import Path
 from test_league import LeagueTests
 from aggregate import summarize, standings
 from common import now, seeds
-from ranking_history import snapshot
+from ranking_history import snapshot, annotate_history
 from highlights import viewing_guide
 
 root=Path(__file__).resolve().parents[1]
@@ -27,10 +27,13 @@ state={**config,"players":players,"pairs":pairs,"standings":standings(players,pa
 state['ranking_history']=[]
 for i in range(3):
     earlier=copy.deepcopy(state);earlier['updated_at']=f'2026-10-20T{10+i}:00:00Z'
+    if i>=1:
+        for person in earlier['players'][:2]: person['sha256']='changed-'+person['id']
     for j,row in enumerate(earlier['standings']):
         rank=(j+i)%len(players)+1;games=(len(players)-1)*100;wins=games-rank*20
         row.update(rank=rank,wins=wins,losses=games-wins,games=games,points=wins,score_rate=wins/games,win_rate=wins/games)
     state['ranking_history'].append(snapshot(earlier))
+state['ranking_history']=annotate_history(state['ranking_history'])
 record={"ticks":100,"assignment":pairs[0]["games"][0]["assignment"],"walls":[],"ship_polygon":[[0,-20],[-13,14],[13,14]],"pilot_polygon":[[0,-9],[-6,6],[6,6]],"frames":[{"t":t,"s":[[300+t,400,0,1,0,3,0,0,0],[900-t,400,3.14,1,0,3,0,0,0]],"a":[],"b":[],"p":[],"e":[]} for t in range(0,101,2)]}
 (root/"runtime").mkdir(exist_ok=True)
 (root/"runtime/ui-fixture.json").write_text(json.dumps({"state":state,"record":record},ensure_ascii=False))

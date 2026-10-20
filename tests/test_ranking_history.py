@@ -1,7 +1,7 @@
 import copy,csv,sys,tempfile,unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'arena'))
-from ranking_history import snapshot,update_history,export_history
+from ranking_history import snapshot,update_history,export_history,annotate_history
 
 class RankingHistoryTests(unittest.TestCase):
     def state(self):
@@ -31,5 +31,33 @@ class RankingHistoryTests(unittest.TestCase):
     def test_legacy_scores_migrate_without_games_or_videos(self):
         a=self.state();a['recorded_at']=a.pop('updated_at');b=self.state();b['players'][0]['sha256']='new'
         self.assertEqual(len(update_history({},[a],b)),2)
+
+    def test_simultaneous_updates_include_every_person_and_sha(self):
+        first=snapshot(self.state());first['players'].append(dict(first['players'][0],id='b',name='乙',sha256='bbb'))
+        second=copy.deepcopy(first);second['key']='second'
+        second['players'][0]['sha256']='new-a';second['players'][1]['sha256']='new-b'
+        h=annotate_history([first,second]);self.assertEqual([p['id'] for p in h[1]['model_updates']],['a','b'])
+        self.assertEqual(h[1]['model_updates'][1]['old_sha256'],'bbb');self.assertEqual(h[1]['model_updates'][1]['new_sha256'],'new-b')
+        self.assertIn('甲、乙',h[1]['change_summary']);self.assertEqual(h[0]['model_updates'],[])
+        with tempfile.TemporaryDirectory() as t:
+            export_history(t,h)
+            with (Path(t)/'ranking_history.csv').open(encoding='utf-8-sig') as f:rows=list(csv.DictReader(f))
+            self.assertEqual(rows[-1]['changed_player_ids'],'a;b');self.assertIn('new-b',rows[-1]['model_updates_json'])
+
+    def test_join_and_results_change_are_not_model_updates(self):
+        a=snapshot(self.state());b=copy.deepcopy(a);b['players'].append(dict(a['players'][0],id='sniper',name='Sniper',sha256='bot'))
+        c=copy.deepcopy(b);c['players'][0]['wins']=90
+        h=annotate_history([a,b,c]);self.assertEqual(h[1]['model_updates'],[])
+        self.assertIn('新增對手：Sniper',h[1]['change_summary']);self.assertEqual(h[2]['change_kinds'],['results_update'])
+
+    def test_protocol_change_is_not_model_update(self):
+        a=snapshot(self.state());b=copy.deepcopy(a);b['protocol']='changed'
+        h=annotate_history([a,b]);self.assertEqual(h[1]['model_updates'],[]);self.assertEqual(h[1]['change_kinds'],['protocol_change'])
+
+    def test_backfill_is_idempotent_and_preserves_points(self):
+        a=snapshot(self.state());b=copy.deepcopy(a);b['players'][0]['sha256']='new';b['key']='b'
+        original=copy.deepcopy([a,b]);h=annotate_history(original)
+        self.assertEqual([p['key'] for p in h],[p['key'] for p in original]);self.assertEqual(annotate_history(h),h)
+        self.assertNotIn('model_updates',original[0]);self.assertEqual(len(h),2)
 
 if __name__=='__main__':unittest.main()
