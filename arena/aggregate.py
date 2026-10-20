@@ -96,3 +96,33 @@ def standings(players, pairs):
     for i,r in enumerate(rows):
         r["rank"] = rows[i-1]["rank"] if i and r["score_rate"]==rows[i-1]["score_rate"] else i+1
     return rows
+
+def export_tables(folder, state):
+    """UTF-8 BOM tables, retaining numeric rates as numbers for Excel/R/Python."""
+    folder=Path(folder); people={p["id"]:p for p in state["players"]}
+    def table(name,rows,fields):
+        with (folder/name).open("w",encoding="utf-8-sig",newline="") as stream:
+            writer=csv.DictWriter(stream,fieldnames=fields,extrasaction="ignore");writer.writeheader();writer.writerows(rows)
+    fields=["rank","player_id","name","games","wins","losses","draws","points","win_rate","score_rate","ci95_low","ci95_high","scope"]
+    def flat(pid,s):return {"player_id":pid,"name":people[pid]["name"],**{k:v for k,v in s.items() if k!="metrics"},"ci95_low":s["win_rate_ci95"][0],"ci95_high":s["win_rate_ci95"][1]}
+    scope="complete_round_robin" if state["complete_round_robin"] else "provisional"
+    table("standings.csv",[{**flat(r["id"],r),"scope":scope} for r in state["standings"]],fields)
+    pairs=[]; seats=[]; matches=[]; combat=[]
+    for r in state["standings"]:combat.append({"scope":"all","pair":"","player_id":r["id"],"name":people[r["id"]]["name"],"games":r["games"],**r["metrics"]})
+    for p in state["pairs"]:
+        for pid in (p["a"],p["b"]):
+            opp=p["b"] if pid==p["a"] else p["a"]
+            pairs.append({"pair":p["key"],"opponent":people[opp]["name"],**flat(pid,p["stats"][pid])})
+            combat.append({"scope":"pair","pair":p["key"],"player_id":pid,"name":people[pid]["name"],"games":p["stats"][pid]["games"],**p["stats"][pid]["metrics"]})
+            for seat in ("ship1","ship2"):seats.append({"pair":p["key"],"opponent":people[opp]["name"],"seat":seat,**flat(pid,p["seats"][pid][seat])})
+        for i,m in enumerate(p["matches"],1):matches.append({"pair":p["key"],"match":i,"a":people[p["a"]]["name"],"b":people[p["b"]]["name"],"a_seat":m["a_seat"],"a_wins":m["a_wins"],"b_wins":m["b_wins"],"draws":m["draws"],"winner":people[m["winner"]]["name"] if m["winner"] else "draw","seeds":";".join(map(str,m["seeds"]))})
+    table("head_to_head.csv",pairs,["pair","player_id","name","opponent",*fields[3:-1]])
+    table("seats.csv",seats,["pair","player_id","name","opponent","seat",*fields[3:-1]])
+    table("matches.csv",matches,["pair","match","a","b","a_seat","a_wins","b_wins","draws","winner","seeds"])
+    extra=["inference_mean_ms","received_ejects","first_ejected_games","first_ejected_rate","comeback_wins","simultaneous_first_eject_games","pilot_respawn_rate"]
+    table("combat_stats.csv",combat,["scope","pair","player_id","name","games",*METRICS,*extra])
+    models=[]
+    for p in state["players"]:
+        info=next((q["model_info"][p["id"]] for q in state["pairs"] if p["id"] in q.get("model_info",{})),{})
+        models.append({"player_id":p["id"],"name":p["name"],"status":p["status"],"filename":p.get("filename"),"sha256":p.get("sha256"),"size_bytes":p.get("size_bytes"),"parameters":info.get("parameters"),"content_verified_at":p.get("content_verified_at")})
+    table("models.csv",models,["player_id","name","status","filename","sha256","size_bytes","parameters","content_verified_at"])

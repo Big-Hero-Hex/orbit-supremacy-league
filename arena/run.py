@@ -4,7 +4,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
-from aggregate import export_csv, standings, summarize
+from aggregate import export_csv, export_tables, standings, summarize
 from common import ROOT, next_check, now, read, write
 
 def main():
@@ -55,6 +55,7 @@ def main():
     state["updated_at"] = now()
     state["next_scheduled_check"] = next_check()
     export_csv(ROOT/"site/data/results.csv",state["pairs"])
+    export_tables(ROOT/"site/data",state)
     write(ROOT/"site/data/latest.json",state)
     # Current broadcast only, with all historical tables kept in history.json.
     # Old binaries are not silently accumulated in Git history or Actions cache.

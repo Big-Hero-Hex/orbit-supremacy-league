@@ -2,12 +2,15 @@ const $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g
 const pct=n=>Number.isFinite(n)?`${(n*100).toFixed(1)}%`:'—', num=n=>Number.isFinite(n)?n.toLocaleString('zh-TW',{maximumFractionDigits:1}):'—';
 const date=t=>t?new Date(t).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false}):'尚無';
 const clock=t=>`${Math.floor(t/60).toString().padStart(2,'0')}:${Math.floor(t%60).toString().padStart(2,'0')}`;
+let cloudMeta=null,cloudFetched=0;
 let data=null,pair=null,selected=null,recording=null,playing=false,position=0,anchor=0,loadingToken=0;
 const name=id=>data?.players.find(p=>p.id===id)?.name??id, player=id=>data.players.find(p=>p.id===id);
 const base=()=>`data/pairs/${pair.key}/`;
 function node(id,html){$(id).innerHTML=html;}
-function nextSlot(t){const d=new Date(t);d.setUTCSeconds(0,0);d.setUTCMinutes(d.getUTCMinutes()+1);while(d.getUTCMinutes()%10!==3)d.setUTCMinutes(d.getUTCMinutes()+1);return d.getTime();}
-function countdown(){if(!data)return;const next=data.next_scheduled_check?Date.parse(data.next_scheduled_check):nextSlot(data.checked_at), diff=Math.ceil((next-Date.now())/1000);$('countdown').textContent=diff>0?clock(diff):'等待雲端執行';$('nextCheck').textContent=`預定 ${new Date(next).toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})} 台北時間 · 可能延遲`;}
+function nextSlot(t){const d=new Date(t);d.setUTCSeconds(0,0);d.setUTCMinutes(d.getUTCMinutes()+1);while(d.getUTCMinutes()%5!==3)d.setUTCMinutes(d.getUTCMinutes()+1);return d.getTime();}
+function countdown(){if(!data)return;const check=cloudMeta?.lastSuccess??data.checked_at,next=nextSlot(check),diff=Math.ceil((next-Date.now())/1000);$('countdown').textContent=cloudMeta?.running?'雲端檢查／比賽中':diff>0?clock(diff):'等待雲端執行';$('nextCheck').textContent=`預定 ${new Date(next).toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})} 台北時間 · 可能延遲`;if(cloudMeta?.lastSuccess)$('updated').textContent=`雲端檢查 ${date(cloudMeta.lastSuccess)} · 成績發布 ${date(data.updated_at)}`;}
+async function cloudStatus(){if(!data||Date.now()-cloudFetched<300000)return;cloudFetched=Date.now();try{const response=await fetch(`https://api.github.com/repos/${data.repository}/actions/workflows/league.yml/runs?per_page=5`,{cache:'no-cache'});if(!response.ok)return;const runs=(await response.json()).workflow_runs,success=runs.find(r=>r.status==='completed'&&r.conclusion==='success');cloudMeta={lastSuccess:success?.updated_at,running:runs.some(r=>['in_progress','queued'].includes(r.status))};countdown();}catch{}}
+
 async function refresh(){
  $('refresh').disabled=true;
  try{const response=await fetch('data/latest.json',{cache:'no-cache'});if(!response.ok)throw Error(response.status);const incoming=await response.json();const oldKey=pair?.key;data=incoming;
@@ -20,7 +23,7 @@ async function refresh(){
  $('notice').textContent=(data.failures?.length?`${data.failures.length}組配對未完成，沒有直接判輸。請查看雲端賽程。 `:'')+'比賽、推論與錄影全在GitHub雲端執行。關機不影響；本頁只顯示已發布結果。';
  renderStandings();renderMatrix();renderModels();renderHighlights();
  const keep=data.pairs.find(p=>p.key===oldKey); if(keep){pair=keep;renderTabs();renderGames();renderStats();}else if(data.pairs.length)choosePair(data.pairs[0].key);else{pair=null;renderTabs();renderStats();}
- countdown();
+ countdown();cloudStatus();
  }catch(error){$('cloudState').textContent='暫時無法取得最新結果';$('notice').textContent='雲端資料連線暫時失敗，既有結果不代表更新已完成。請稍後刷新。';console.error(error);}
  finally{$('refresh').disabled=false;}
 }

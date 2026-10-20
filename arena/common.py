@@ -11,7 +11,7 @@ def now():
 
 def next_check():
     t = datetime.now(timezone.utc).replace(second=0, microsecond=0) + timedelta(minutes=1)
-    while t.minute % 10 != 3: t += timedelta(minutes=1)
+    while t.minute % 5 != 3: t += timedelta(minutes=1)
     return t.isoformat()
 
 def read(path, default=None):

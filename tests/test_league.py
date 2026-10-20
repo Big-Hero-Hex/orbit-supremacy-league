@@ -4,8 +4,8 @@ from pathlib import Path
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"arena"))
 from common import pair_key, seeds
-from aggregate import METRICS, interval, standings, summarize
-from drive import Links
+from aggregate import METRICS, export_tables, interval, standings, summarize
+from drive import Links, parse_metadata
 
 class LeagueTests(unittest.TestCase):
     def fixture(self):
@@ -47,5 +47,30 @@ class LeagueTests(unittest.TestCase):
         self.assertEqual(p.items,[{"file_id":"abc_123","filename":"model.zip"}])
     def test_seeds_unique_reproducible_not_contiguous(self):
         a=seeds("OSL-S01");self.assertEqual(len(set(a)),50);self.assertEqual(a,seeds("OSL-S01"));self.assertTrue(any(abs(x-y)>100 for x,y in zip(a,a[1:])))
+    def test_same_id_new_revision_invalidates_metadata_fingerprint(self):
+        import json
+        row=["file-id",["folder-id"],"model.zip","application/zip",0,None,0,0,0,1792500000000,1792500000000,None,None,7113857]
+        def page(row):return "window['_DRIVE_ivd'] = '"+json.dumps([[row]])+"';"
+        first=parse_metadata(page(row),"folder-id")[0]
+        self.assertEqual(first["metadata_fingerprint"],parse_metadata(page(row),"folder-id")[0]["metadata_fingerprint"])
+        row[10]+=1
+        second=parse_metadata(page(row),"folder-id")[0]
+        self.assertNotEqual(first["metadata_fingerprint"],second["metadata_fingerprint"])
+    def test_unknown_revision_schema_falls_back_to_content_hash(self):
+        import json
+        row=["file-id",["folder-id"],"model.zip","application/zip",0,None,0,0,0,None,None,None,None,100]
+        found=parse_metadata("window['_DRIVE_ivd'] = '"+json.dumps([[row]])+"';","folder-id")[0]
+        self.assertNotIn("metadata_fingerprint",found)
+    def test_downloadable_csv_tables_keep_numeric_values_and_utf8_bom(self):
+        import tempfile,csv
+        job,raw=self.fixture();p=summarize(raw,job,{})
+        players=[{**job["a"],"name":"甲","status":"ready"},{**job["b"],"name":"乙","status":"ready"}]
+        state={"players":players,"pairs":[p],"standings":standings(players,[p]),"complete_round_robin":False}
+        with tempfile.TemporaryDirectory() as temp:
+            export_tables(temp,state)
+            self.assertTrue((Path(temp)/"standings.csv").read_bytes().startswith(b"\xef\xbb\xbf"))
+            with (Path(temp)/"standings.csv").open(encoding="utf-8-sig") as f:rows=list(csv.DictReader(f))
+            self.assertEqual(rows[0]["name"],"甲");self.assertEqual(float(rows[0]["win_rate"]),.5)
+            for filename in ("head_to_head.csv","seats.csv","matches.csv","combat_stats.csv","models.csv"):self.assertTrue((Path(temp)/filename).is_file())
 
 if __name__=="__main__":unittest.main()

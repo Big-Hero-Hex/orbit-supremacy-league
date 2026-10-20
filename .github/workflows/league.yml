@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '3,13,23,33,43,53 * * * *'
+    - cron: '3,8,13,18,23,28,33,38,43,48,53,58 * * * *'
 
 concurrency:
   group: osl-broadcast
@@ -52,8 +52,10 @@ jobs:
         if: steps.plan.outputs.changed == 'true'
         run: docker build --tag osl-worker .
       - name: Run original paired games in isolated container
+        if: steps.plan.outputs.publish == 'true'
         run: python arena/run.py
       - name: Update broadcast snapshot
+        if: steps.plan.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -63,14 +65,18 @@ jobs:
           fi
           gh release upload arena-data runtime/site.tar.gz --clobber
       - uses: actions/configure-pages@v5
+        if: steps.plan.outputs.publish == 'true'
       - uses: actions/upload-pages-artifact@v3
+        if: steps.plan.outputs.publish == 'true'
         with:
           path: site
           retention-days: 1
       - name: Publish OSL
+        if: steps.plan.outputs.publish == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
       - name: Remove old deployment copies after new site is live
+        if: steps.plan.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: python arena/cleanup_artifacts.py
