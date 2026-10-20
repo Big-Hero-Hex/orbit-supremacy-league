@@ -75,7 +75,12 @@ def model_metadata(folder):
 def download(file_id, target):
     # gdown follows Google's bounded download confirmation form; no Google OAuth,
     # API keys, browser cookies, or local model files are transferred to runners.
-    import gdown
+    try: import gdown
+    except ImportError:
+        import os, subprocess, sys
+        if os.getenv("GITHUB_ACTIONS")!="true": raise RuntimeError("League ZIP retrieval is cloud-only")
+        subprocess.run([sys.executable,"-m","pip","install","gdown==5.2.0"],check=True)
+        import gdown
     output = gdown.download(id=file_id, output=str(target), quiet=True, use_cookies=False)
     if not output or not Path(output).is_file(): raise ValueError("模型無法公開下載；請檢查連結權限")
     if Path(output).stat().st_size > 64 * 1024 * 1024: raise ValueError("模型ZIP超過64MiB，請只上傳模型")

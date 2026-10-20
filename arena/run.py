@@ -10,6 +10,15 @@ from common import ROOT, next_check, now, read, write
 def main():
     plan = read(ROOT/"runtime/plan.json")
     state = read(ROOT/"site/data/latest.json")
+    previous=read(ROOT/"runtime/previous_manifest.json",{})
+    history=read(ROOT/"site/data/history.json",[])
+    oldhashes={p["id"]:p.get("sha256") for p in previous.get("players",[])}
+    hashes={p["id"]:p.get("sha256") for p in state["players"]}
+    if previous.get("pairs") and (hashes!=oldhashes or previous.get("protocol")!=state.get("protocol")):
+        history.append({"recorded_at":previous.get("updated_at"),"players":previous["players"],
+                        "standings":previous.get("standings",[]),
+                        "pairs":[{k:v for k,v in p.items() if k not in ("games","videos")} for p in previous["pairs"]]})
+    write(ROOT/"site/data/history.json",history);state["history_count"]=len(history)
     failures = []
     for job in plan["jobs"]:
         temporary = ROOT/"runtime"/job["key"]

@@ -44,19 +44,11 @@ def main():
     for a, b in itertools.combinations(players, 2):
         if a["status"] != "ready" or b["status"] != "ready": continue
         key = pair_key(a, b, protocol)
-        cached = read(data / "pairs" / key / "result.json")
+        cached = old.get(key)
         if cached and cached.get("complete") and cached.get("key") == key:
             active_pairs.append(cached)
         else:
             jobs.append({"key": key, "a": a, "b": b, "seeds": protocol["seeds"]})
-    history = read(data / "history.json", [])
-    hashes = {p["id"]: p.get("sha256") for p in players}
-    oldhashes = {p["id"]: p.get("sha256") for p in previous.get("players", [])}
-    if previous.get("pairs") and hashes != oldhashes:
-        history.append({"recorded_at": previous.get("updated_at"), "players": previous["players"],
-                        "standings": previous.get("standings", []),
-                        "pairs": [{k:v for k,v in p.items() if k not in ("games", "videos")} for p in previous["pairs"]]})
-    write(data / "history.json", history)
     # When a changed player needs a match, retrieve the unchanged opponent only
     # then. Never mix a newly replaced file into a previously frozen match.
     required={p["id"]:p for job in jobs for p in (job["a"],job["b"])}
@@ -73,9 +65,10 @@ def main():
              "updated_at": now(), "checked_at": now(), "players": players, "pairs": active_pairs,
              "protocol": protocol, "queued_pairs": len(jobs), "standings": [], "total_games": 0,
              "status": "running" if jobs else "ready" if active_pairs else "waiting",
-             "history_count": len(history), "cloud_run": os.getenv("GITHUB_RUN_ID"),
+             "history_count": previous.get("history_count",0), "cloud_run": os.getenv("GITHUB_RUN_ID"),
              "notice": "每5分鐘輕量檢查Drive修訂資訊；只在換版時下載並比賽，沒有變更不重錄或重發網站。每天有一次SHA內容複核。排程可能延遲。"}
     write(data / "latest.json", state)
+    write(ROOT / "runtime/planned_state.json",state)
     write(ROOT / "runtime/plan.json", {"jobs": jobs, "protocol": protocol})
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as out: out.write(f"changed={'true' if jobs else 'false'}\npublish={'true' if publish else 'false'}\n")
