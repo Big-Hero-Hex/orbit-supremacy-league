@@ -43,5 +43,18 @@ try{
  await page.locator('.pair-tab').nth(2).click();await page.waitForFunction(()=>document.getElementById('screenEmpty').hidden===true);
  await page.screenshot({path:'runtime/ui-check/ui-fixture-only.png',fullPage:true});
  results.push('UI fixtures only: 6 pairs, 12 matrix cells, seat filter, seed search, playback, event seek, pair statistics, pair switching');
+ // Exercise real rendered failure/recovery text with explicitly mocked status,
+ // without running a game or changing the real published scores.
+ let pulseReads=0;const pulse=await browser.newPage({viewport:{width:1440,height:1000}});pulse.on('pageerror',e=>errors.push(String(e)));
+ await pulse.route('**/api.github.com/repos/*/orbit-supremacy-league/actions/runs?*',route=>{
+  pulseReads++;const now=Date.now();return route.fulfill({json:{workflow_runs:[{id:'ui-test-only',path:'.github/workflows/league.yml',status:'completed',conclusion:'success',updated_at:new Date(now-(pulseReads===1?3600000:10000)).toISOString()},{path:'.github/workflows/poll-clock.yml',status:'waiting',created_at:new Date(now-(pulseReads===1?3600000:10000)).toISOString()}]}});
+ });
+ await pulse.goto('https://jasonliaojcs.github.io/orbit-supremacy-league/',{waitUntil:'networkidle'});
+ await pulse.waitForFunction(()=>document.getElementById('cloudState').textContent.includes('逾時'));
+ assert.equal(await pulse.locator('#pollWarning').isVisible(),true);await pulse.locator('.broadcast-status').screenshot({path:'runtime/ui-check/stale-status-fixture-only.png'});
+ await pulse.click('#refresh');await pulse.waitForFunction(()=>document.getElementById('cloudState').textContent.includes('模型無變更'));
+ assert.equal(pulseReads,2,'manual refresh must bypass five-minute API cache');assert.equal(await pulse.locator('#pollWarning').isVisible(),false);
+ await pulse.locator('.broadcast-status').screenshot({path:'runtime/ui-check/recovered-status-fixture-only.png'});
+ results.push('Mocked cloud status: stale warning visible, manual refresh refetches API immediately, healthy unchanged recovery hides warning');
  assert.deepEqual(errors,[]);writeFileSync('runtime/ui-check/results.json',JSON.stringify({passed:true,results,errors,fixture_scores_are_not_real_results:true},null,2));console.log(results.join('\n'));
 }finally{await browser.close();}

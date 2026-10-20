@@ -10,4 +10,5 @@ assert.equal(cloudPulse(data,{runs:[{...good,conclusion:'failure'},clock]},now).
 assert.equal(cloudPulse(data,{runs:[good,{...clock,created_at:'2026-10-20T15:10:00Z'}]},now).status,'delayed');
 assert.equal(cloudPulse(data,{unavailable:true,runs:[good]},now).status,'unverified');
 assert.equal(cloudPulse({...data,cloud_run:'2'},{runs:[good,clock]},now).noChange,false);
-console.log('7 cloud pulse checks passed: stale ≠ nochange, server clock, active, failed, delayed, API unavailable, published');
+assert.equal(cloudPulse(data,{runs:[good,{...clock,created_at:'2026-10-20T15:21:00Z'}]},now).status,'idle','five-minute cached status must not falsely report an outage');
+console.log('8 cloud pulse checks passed: stale ≠ nochange, server clock, active, failed, delayed, API unavailable, published, cache grace');
