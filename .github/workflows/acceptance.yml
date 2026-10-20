@@ -17,6 +17,7 @@ jobs:
         run: |
           npm install --no-save playwright@1.56.1
           npx playwright install --with-deps chromium
+          if ! command -v google-chrome >/dev/null; then npx playwright install chrome; fi
       - name: Inspect real completed matches and MP4 playback
         run: node cloud_checks/acceptance.mjs
       - uses: actions/upload-artifact@v4

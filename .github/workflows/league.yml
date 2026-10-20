@@ -13,6 +13,7 @@ permissions:
   contents: write
   pages: write
   id-token: write
+  actions: write
 
 jobs:
   broadcast:
@@ -69,3 +70,7 @@ jobs:
       - name: Publish OSL
         id: deployment
         uses: actions/deploy-pages@v4
+      - name: Remove old deployment copies after new site is live
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python arena/cleanup_artifacts.py

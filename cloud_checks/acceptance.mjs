@@ -6,7 +6,9 @@ const state=await (await fetch(url+'data/latest.json?acceptance='+Date.now())).j
 assert.ok(state.total_games>=100,'Requires genuine finished matches, not fixtures');
 const pair=state.pairs.find(p=>p.a==='liao'&&p.b==='yang');assert.ok(pair);assert.equal(pair.games.length,100);
 mkdirSync('runtime/real-acceptance',{recursive:true});
-const browser=await chromium.launch();const errors=[];
+// Production H.264 MP4 needs the media codecs shipped with Google Chrome;
+// Playwright's stripped Chromium headless shell may not ship those codecs.
+const browser=await chromium.launch({channel:'chrome'});const errors=[];
 try{
  const page=await browser.newPage({viewport:{width:1440,height:1000},deviceScaleFactor:1});page.on('pageerror',e=>errors.push(String(e)));
  await page.goto(url,{waitUntil:'networkidle'});await page.waitForFunction(()=>document.querySelectorAll('.leader-row').length>=2);
@@ -21,7 +23,9 @@ try{
  await page.screenshot({path:'runtime/real-acceptance/desktop-real.png',fullPage:true});
  await page.locator('.broadcast-layout').screenshot({path:'runtime/real-acceptance/broadcast-real.png'});
  const video=pair.videos[0];await page.locator(`[data-game="${video.game_id}"]`).click();await page.waitForFunction(()=>document.getElementById('screenEmpty').hidden===true);
- await page.click('#mp4Button');await page.waitForFunction(()=>document.getElementById('mp4').readyState>=2&&document.getElementById('mp4').currentTime>0,{timeout:30000});
+ await page.click('#mp4Button');
+ try{await page.waitForFunction(()=>document.getElementById('mp4').readyState>=2&&document.getElementById('mp4').currentTime>0,null,{timeout:30000});}
+ catch(error){writeFileSync('runtime/real-acceptance/media-diagnostic.json',JSON.stringify(await page.locator('#mp4').evaluate(v=>({src:v.currentSrc,readyState:v.readyState,networkState:v.networkState,paused:v.paused,time:v.currentTime,error:v.error?{code:v.error.code,message:v.error.message}:null,h264:v.canPlayType('video/mp4; codecs="avc1.42E01E"')})),null,2));throw error;}
  await page.locator('.stage').screenshot({path:'runtime/real-acceptance/official-mp4.png'});
  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  await page.screenshot({path:'runtime/real-acceptance/mobile-real.png',fullPage:true});assert.deepEqual(errors,[]);

@@ -20,7 +20,9 @@
 
 每場保存gzip視覺狀態與動作/觀測NPZ，所有對局均可播放、拖曳、換倍速；每配對另外輸出勝/敗/和/最長局最多四段官方renderer MP4，重播結果/步數核對。Canvas只畫錄製狀態，不含遊戲物理或模型。當模型改版，保留歷史成績與hash；首頁只保存目前版本的完整重播，避免無限堆積影片。歷史重播不是永久保存承諾。
 
-目前標準public Actions compute免費，Pages免費；不使用付費大型runner或付費雲端服務。Artifact只留一天、單份current release、無Actions cache。仍受GitHub/Drive政策、儲存與流量限制。
+目前標準public Actions compute免費，Pages免費；不使用付費大型runner或付費雲端服務。新版發布成功後刪除舊Pages artifacts，只留目前發布副本；驗證截圖保留一天、單份current release、無Actions cache。仍受GitHub/Drive政策、儲存與流量限制。
+
+首次真實100場實測：整份當前資料（全部狀態重播、動作觀測與3段MP4）6,772,783 bytes；對戰＋錄影＋結果整理約63秒，另有建置／發布成本。600場的容量依局長而變，不能把此單次比例當固定承諾。
 
 ## 開發檢查
 
