@@ -1,0 +1,5 @@
+*
+!Dockerfile
+!arena/
+arena/*
+!arena/worker.py

@@ -16,7 +16,7 @@ for a,b in itertools.combinations(players,2):
         r["id"]=f"{r['seed']}-{r['a_seat']}";r["assignment"]={s:a["id"] if pid=="a" else b["id"] for s,pid in r["assignment"].items()}
         r["winner"]=r["assignment"]["ship1"];r["metrics"]={a["id"]:r["metrics"]["a"],b["id"]:r["metrics"]["b"]}
         r["timeline"]=[{"tick":50,"kind":"eject","by":r["winner"],"target":r["assignment"]["ship2"]}]
-        r["replay"]="test.json.gz";r["audit"]="test.npz"
+        r["replay"]=f"replays/{r['id']}.json.gz";r["audit"]=f"audit/{r['id']}.npz"
     raw["model_info"]={a["id"]:{"parameters":589828},b["id"]:{"parameters":589828}}
     pairs.append(summarize(raw,job,{}))
 state={**config,"players":players,"pairs":pairs,"standings":standings(players,pairs),"total_games":600,"complete_round_robin":True,"status":"complete","checked_at":now(),"updated_at":now(),"failures":[]}

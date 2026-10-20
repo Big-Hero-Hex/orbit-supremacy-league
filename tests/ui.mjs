@@ -19,7 +19,7 @@ try{
  assert.equal(await real.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);results.push('Mobile 390px: no horizontal overflow');
  const page=await browser.newPage({viewport:{width:1440,height:1000}});page.on('pageerror',e=>errors.push(String(e)));
  await page.route('**/data/latest.json',route=>route.fulfill({json:fixture.state}));
- await page.route('**/test.json.gz',route=>route.fulfill({contentType:'application/gzip',body:gzipSync(JSON.stringify(fixture.record))}));
+ await page.route('**/replays/*.json.gz',route=>route.fulfill({contentType:'application/gzip',body:gzipSync(JSON.stringify(fixture.record))}));
  await page.goto('https://jasonliaojcs.github.io/orbit-supremacy-league/',{waitUntil:'networkidle'});
  await page.waitForFunction(()=>document.querySelectorAll('.leader-row').length===4);
  assert.equal(await page.locator('.matrix-cell').count(),12);assert.equal(await page.locator('.pair-tab').count(),6);

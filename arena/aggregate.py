@@ -22,6 +22,21 @@ def stats(games, player):
     wins = sum(r["winner"]==player for r in games); draws = sum(r["winner"] is None for r in games); n = len(games)
     metrics = {k:sum(r["metrics"][player][k] for r in games) for k in METRICS}
     metrics["inference_mean_ms"] = statistics.mean(r["metrics"][player]["inference_mean_ms"] for r in games)
+    received_ejects = sum(e.get("kind")=="eject" and e.get("target")==player for r in games for e in r.get("timeline",[]))
+    first_ejected = 0; comebacks = 0; simultaneous = 0
+    for r in games:
+        ejects = [e for e in r.get("timeline",[]) if e.get("kind")=="eject"]
+        if not ejects: continue
+        tick = min(e["tick"] for e in ejects)
+        targets = {e.get("target") for e in ejects if e["tick"]==tick}
+        if len(targets)>1: simultaneous += 1
+        elif player in targets:
+            first_ejected += 1
+            comebacks += int(r["winner"]==player)
+    metrics.update(received_ejects=received_ejects, first_ejected_games=first_ejected,
+                   first_ejected_rate=first_ejected/n, comeback_wins=comebacks,
+                   simultaneous_first_eject_games=simultaneous,
+                   pilot_respawn_rate=metrics["respawns"]/received_ejects if received_ejects else None)
     return {"games":n,"wins":wins,"draws":draws,"losses":n-wins-draws,"win_rate":wins/n,
             "points":wins+.5*draws,"score_rate":(wins+.5*draws)/n,"win_rate_ci95":interval(games,player),
             "score_rate_ci95":interval(games,player,True),"metrics":metrics}
@@ -33,6 +48,10 @@ def summarize(raw, job, protocol):
     for r in rows:
         if r["winner"] not in (job["a"]["id"],job["b"]["id"],None): raise ValueError("Invalid winner")
         if not isinstance(r["ticks"],int) or not 1<=r["ticks"]<=1500: raise ValueError("Invalid game length")
+        expected_id=f"{r['seed']}-{r['a_seat']}"
+        if r.get("id",expected_id)!=expected_id: raise ValueError("Invalid recording ID")
+        if "replay" in r and r["replay"]!=f"replays/{expected_id}.json.gz": raise ValueError("Invalid replay path")
+        if "audit" in r and r["audit"]!=f"audit/{expected_id}.npz": raise ValueError("Invalid audit path")
         for pid in (job["a"]["id"],job["b"]["id"]):
             for key in METRICS:
                 value = r["metrics"][pid][key]
@@ -53,12 +72,17 @@ def summarize(raw, job, protocol):
     return result
 
 def export_csv(path, pairs):
-    fields = ["pair","seed","ship1","ship2","winner","ticks","seconds"]
+    fields = ["pair","seed","ship1","ship2","winner","ticks","seconds","timeline_json"]
+    fields += [s+"_"+m for s in ("ship1","ship2") for m in (*METRICS,"inference_mean_ms","inference_p95_ms")]
     with Path(path).open("w",encoding="utf-8-sig",newline="") as stream:
         writer = csv.DictWriter(stream,fieldnames=fields); writer.writeheader()
         for pair in pairs:
             for r in pair["games"]:
-                writer.writerow(dict(pair=pair["key"],seed=r["seed"],ship1=r["assignment"]["ship1"],ship2=r["assignment"]["ship2"],winner=r["winner"] or "draw",ticks=r["ticks"],seconds=r["seconds"]))
+                import json
+                row=dict(pair=pair["key"],seed=r["seed"],ship1=r["assignment"]["ship1"],ship2=r["assignment"]["ship2"],winner=r["winner"] or "draw",ticks=r["ticks"],seconds=r["seconds"],timeline_json=json.dumps(r.get("timeline",[]),ensure_ascii=False))
+                for seat in ("ship1","ship2"):
+                    row.update({seat+"_"+m:r["metrics"][r["assignment"][seat]].get(m) for m in (*METRICS,"inference_mean_ms","inference_p95_ms")})
+                writer.writerow(row)
 
 def standings(players, pairs):
     rows = []
