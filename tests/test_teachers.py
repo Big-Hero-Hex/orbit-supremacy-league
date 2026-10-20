@@ -32,6 +32,12 @@ class TeacherTests(unittest.TestCase):
                 download.reset_mock();capture=io.StringIO()
                 with contextlib.redirect_stdout(capture):plan.main()
                 self.assertEqual(read(root/'runtime/plan.json')['jobs'],[]);self.assertEqual(download.call_count,0);self.assertIn('publish=False',capture.getvalue())
+                # Periodic polls must publish changed UI even if concurrency
+                # coalesced/cancelled the push-triggered deployment.
+                (root/'site/style.css').write_text('body{color:red}')
+                capture=io.StringIO()
+                with contextlib.redirect_stdout(capture):plan.main()
+                self.assertEqual(read(root/'runtime/plan.json')['jobs'],[]);self.assertEqual(download.call_count,0);self.assertIn('publish=True',capture.getvalue())
     def test_rule_bot_dependencies_change_identity(self):
         hashes={'models/rusher_bot.py':'a','models/sniper_bot.py':'b'}
         first=builtin_identity('rusher',hashes);self.assertNotEqual(first,builtin_identity('sniper',hashes))

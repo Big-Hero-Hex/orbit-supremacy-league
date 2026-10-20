@@ -3,7 +3,7 @@ import itertools
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from common import ROOT, digest, now, pair_key, read, seeds, write,engine_revision
+from common import ROOT, digest, now, pair_key, read, seeds, write,engine_revision,site_revision
 from drive import model_metadata, download
 from participants import builtin_identity
 
@@ -66,7 +66,8 @@ def main():
             if digest(target)!=p["sha256"]:raise ValueError("模型在配對凍結後換版，保留上一份結果並等待下一次檢查")
     def comparable(ps):
         return [{k:p.get(k) for k in ("id","status","sha256","filename","message","metadata_fingerprint","content_verified_at")} for p in ps]
-    publish=bool(jobs or comparable(players)!=comparable(previous.get("players",[])) or previous.get("protocol")!=protocol or os.getenv("GITHUB_EVENT_NAME")=="push")
+    ui_revision=site_revision(ROOT)
+    publish=bool(jobs or comparable(players)!=comparable(previous.get("players",[])) or previous.get("protocol")!=protocol or previous.get('site_source_revision')!=ui_revision or os.getenv("GITHUB_EVENT_NAME")=="push")
     state = {"title": config["title"], "english_title": config["english_title"], "season": config["season"],
              "repository": config["repository"], "drive_folder": config["drive_folder"],
              "updated_at": now(), "checked_at": now(), "players": players, "pairs": active_pairs,
@@ -75,6 +76,7 @@ def main():
              "history_count": previous.get("history_count",0), "cloud_run": os.getenv("GITHUB_RUN_ID"),
              "expected_pairs":len(players)*(len(players)-1)//2,"expected_games":len(players)*(len(players)-1)//2*100,
              "worker_source_sha256":digest(ROOT/'arena/worker.py'),
+             "site_source_revision":ui_revision,
              "controller_contracts":{"model":"native SB3 policy.predict, deterministic, raw84, CPU one thread","official_rulebot":"老師原版rusher_bot_action/sniper_bot_action，直接使用raw84，僅適配predict介面；非神經模型"},
              "notice": "每5分鐘輕量檢查Drive修訂資訊；只在換版時下載並比賽，沒有變更不重錄或重發網站。每天有一次SHA內容複核。排程可能延遲。"}
     write(data / "latest.json", state)

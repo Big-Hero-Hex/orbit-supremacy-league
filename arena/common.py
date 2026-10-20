@@ -57,3 +57,10 @@ def engine_revision(root=ROOT):
         if hashlib.sha256(core.encode()).hexdigest()==anchor['policy_match_core_sha256']:
             return anchor['legacy_worker_sha256']
     return digest(worker)
+
+def site_revision(root=ROOT):
+    """A queued push can be coalesced by a poll; still publish changed UI code."""
+    site=Path(root)/'site'
+    files=sorted(p for p in site.rglob('*') if p.is_file() and 'data' not in p.relative_to(site).parts and p.suffix in ('.html','.js','.css','.svg','.png'))
+    payload='\n'.join(p.relative_to(site).as_posix()+':'+digest(p) for p in files)
+    return hashlib.sha256(payload.encode()).hexdigest()
