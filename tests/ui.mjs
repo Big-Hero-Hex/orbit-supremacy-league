@@ -53,6 +53,18 @@ try{
  await page.locator('#ranking-history').screenshot({path:'runtime/ui-check/ranking-mobile-fixture-only.png'});await page.setViewportSize({width:1440,height:1000});
  results.push('Synthetic UI history only: 3 snapshots /6participants, rank/points selector, legend toggles, keyboard detail, 18 table rows, mobile no overflow');
  assert.equal(await page.locator('.matrix-cell').count(),30);assert.equal(await page.locator('.pair-tab').count(),15);
+ await page.locator('#pairNext').click();await page.waitForFunction(()=>document.getElementById('pairTabs').scrollLeft>100);
+ const scroller=page.locator('#pairTabs');await scroller.evaluate(e=>e.scrollLeft=0);await scroller.hover();await page.mouse.wheel(0,350);
+ await page.waitForFunction(()=>document.getElementById('pairTabs').scrollLeft>100);
+ await scroller.evaluate(e=>e.scrollLeft=0);await page.waitForTimeout(200);
+ const selectedBefore=await page.locator('#pairTabs .active').getAttribute('data-pair'),box=await scroller.boundingBox();
+ await page.mouse.move(box.x+300,box.y+15);await page.mouse.down();await page.mouse.move(box.x+80,box.y+15,{steps:8});await page.mouse.up();
+ assert.ok(await scroller.evaluate(e=>e.scrollLeft)>100);assert.equal(await page.locator('#pairTabs .active').getAttribute('data-pair'),selectedBefore,'drag must not activate a different match');
+ const leftBefore=await scroller.evaluate(e=>e.scrollLeft);await page.locator('#pairPrevious').click();await page.waitForFunction(before=>document.getElementById('pairTabs').scrollLeft<before,leftBefore);
+ await page.locator('.pair-tab').last().click();await page.waitForFunction(()=>document.querySelector('#pairTabs .pair-tab:last-child').classList.contains('active'));
+ await page.locator('.pair-tab').first().click();
+ await page.locator('.pair-nav').screenshot({path:'runtime/ui-check/pair-navigation-fixture-only.png'});
+ results.push('Horizontal pair navigation: arrows, normal vertical wheel, mouse drag without accidental selection, last/first match reachable');
  assert.equal(await page.locator('#playerCount').textContent(),'06');assert.equal(await page.locator('#pairCount').textContent(),'15');
  assert.equal(await page.locator('#gameList .game-row').count(),20);await page.selectOption('#seatFilter','ship1');assert.equal(await page.locator('.game-row').count(),10);
  await page.selectOption('#seatFilter','');await page.selectOption('#watchSet','all');
