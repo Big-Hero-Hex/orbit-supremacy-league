@@ -27,6 +27,8 @@ state={**config,"players":players,"pairs":pairs,"standings":standings(players,pa
 state['ranking_history']=[]
 for i in range(3):
     earlier=copy.deepcopy(state);earlier['updated_at']=f'2026-10-20T{10+i}:00:00Z'
+    earlier['seed_round']=dict(id='legacy-s01' if i<2 else 'daily-20261022',starts_at=None if i<2 else '2026-10-21T20:00:00Z',next_rotation_at='2026-10-21T20:00:00Z' if i<2 else '2026-10-22T20:00:00Z')
+    earlier['protocol']={'version':1,'seeds':seeds('fixture-old' if i<2 else 'fixture-new')}
     if i>=1:
         for person in earlier['players'][:2]: person['sha256']='changed-'+person['id']
     for j,row in enumerate(earlier['standings']):
@@ -34,6 +36,7 @@ for i in range(3):
         row.update(rank=rank,wins=wins,losses=games-wins,games=games,points=wins,score_rate=wins/games,win_rate=wins/games)
     state['ranking_history'].append(snapshot(earlier))
 state['ranking_history']=annotate_history(state['ranking_history'])
+state['seed_round']=earlier['seed_round'];state['protocol']=earlier['protocol']
 record={"ticks":100,"assignment":pairs[0]["games"][0]["assignment"],"walls":[],"ship_polygon":[[0,-20],[-13,14],[13,14]],"pilot_polygon":[[0,-9],[-6,6],[6,6]],"frames":[{"t":t,"s":[[300+t,400,0,1,0,3,0,0,0],[900-t,400,3.14,1,0,3,0,0,0]],"a":[],"b":[],"p":[],"e":[]} for t in range(0,101,2)]}
 (root/"runtime").mkdir(exist_ok=True)
 (root/"runtime/ui-fixture.json").write_text(json.dumps({"state":state,"record":record},ensure_ascii=False))

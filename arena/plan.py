@@ -6,11 +6,17 @@ from pathlib import Path
 from common import ROOT, digest, now, pair_key, read, seeds, write,engine_revision,site_revision
 from drive import model_metadata, download
 from participants import builtin_identity
+from seed_round import select_round
 
 def main():
     config = read(ROOT / "arena.json")
     data = ROOT / "site/data"
     previous = read(data / "latest.json", {})
+    persisted_round = read(ROOT / 'runtime/seed-round.json')
+    seed_round = select_round(config, previous, persisted_round)
+    round_changed = seed_round != persisted_round
+    if seed_round:
+        write(ROOT / 'runtime/seed-round.json', seed_round)
     models = ROOT / "runtime/models"; models.mkdir(parents=True, exist_ok=True)
     players = []
     old_players = {p["id"]:p for p in previous.get("players",[])}
@@ -40,7 +46,7 @@ def main():
         except Exception as exc:
             p.update(status="error", message=str(exc)[:250])
         players.append(p)
-    protocol = {"version": 1, "games_per_pair": 100, "seeds": seeds(config["seed_namespace"]),
+    protocol = {"version": 1, "games_per_pair": 100, "seeds": seed_round['seeds'] if seed_round else seeds(config["seed_namespace"]),
                 "deterministic": True, "seat_swap": True, "max_ticks": 1500, "fps": 50,
                 "inference": "native SB3 policy.predict, CPU, one Torch thread",
                 "ranking": "(wins + 0.5 draws) / games; equal scores share rank",
@@ -67,23 +73,24 @@ def main():
     def comparable(ps):
         return [{k:p.get(k) for k in ("id","status","sha256","filename","message","metadata_fingerprint","content_verified_at")} for p in ps]
     ui_revision=site_revision(ROOT)
-    publish=bool(jobs or comparable(players)!=comparable(previous.get("players",[])) or previous.get("protocol")!=protocol or previous.get('site_source_revision')!=ui_revision or os.getenv("GITHUB_EVENT_NAME")=="push")
+    publish=bool(jobs or comparable(players)!=comparable(previous.get("players",[])) or previous.get("protocol")!=protocol or previous.get('seed_round')!=seed_round or previous.get('site_source_revision')!=ui_revision or os.getenv("GITHUB_EVENT_NAME")=="push")
     state = {"title": config["title"], "english_title": config["english_title"], "season": config["season"],
              "repository": config["repository"], "drive_folder": config["drive_folder"],
              "updated_at": now(), "checked_at": now(), "players": players, "pairs": active_pairs,
              "protocol": protocol, "queued_pairs": len(jobs), "standings": [], "total_games": 0,
+             "seed_round": seed_round,
              "status": "running" if jobs else "ready" if active_pairs else "waiting",
              "history_count": previous.get("history_count",0), "cloud_run": os.getenv("GITHUB_RUN_ID"),
              "expected_pairs":len(players)*(len(players)-1)//2,"expected_games":len(players)*(len(players)-1)//2*100,
              "worker_source_sha256":digest(ROOT/'arena/worker.py'),
              "site_source_revision":ui_revision,
              "controller_contracts":{"model":"native SB3 policy.predict, deterministic, raw84, CPU one thread","official_rulebot":"老師原版rusher_bot_action/sniper_bot_action，直接使用raw84，僅適配predict介面；非神經模型"},
-             "notice": "每5分鐘輕量檢查Drive修訂資訊；只在換版時下載並比賽，沒有變更不重錄或重發網站。每天有一次SHA內容複核。排程可能延遲。"}
+             "notice": "每5分鐘輕量檢查；模型換版只重跑相關配對，每日台灣時間04:00起換共同50個seed、雙座位全輪重賽。沒有變更不重錄。每天SHA內容複核；雲端排隊可能延遲。"}
     write(data / "latest.json", state)
     write(ROOT / "runtime/planned_state.json",state)
     write(ROOT / "runtime/plan.json", {"jobs": jobs, "protocol": protocol})
     if os.environ.get("GITHUB_OUTPUT"):
-        with open(os.environ["GITHUB_OUTPUT"], "a") as out: out.write(f"changed={'true' if jobs else 'false'}\npublish={'true' if publish else 'false'}\n")
+        with open(os.environ["GITHUB_OUTPUT"], "a") as out: out.write(f"changed={'true' if jobs else 'false'}\npublish={'true' if publish else 'false'}\nseed_round_changed={'true' if seed_round and round_changed else 'false'}\n")
     print(f"Roster: {sum(p['status']=='ready' for p in players)}/{len(players)} ready; {len(jobs)} changed pair(s); ZIP downloads={downloads}; publish={publish}.")
 
 if __name__ == "__main__": main()

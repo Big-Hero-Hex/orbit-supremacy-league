@@ -18,7 +18,7 @@ def main():
     hashes={p["id"]:p.get("sha256") for p in state["players"]}
     if previous.get("pairs") and (hashes!=oldhashes or previous.get("protocol")!=state.get("protocol")):
         history.append({"recorded_at":previous.get("updated_at"),"players":previous["players"],
-                        "standings":previous.get("standings",[]),
+                        "standings":previous.get("standings",[]),"protocol":previous.get('protocol',{}),"seed_round":previous.get('seed_round'),
                         "pairs":[{k:v for k,v in p.items() if k not in ("games","videos")} for p in previous["pairs"]]})
     write(ROOT/"site/data/history.json",history);state["history_count"]=len(history)
     failures = []

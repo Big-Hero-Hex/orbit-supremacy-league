@@ -44,10 +44,25 @@ jobs:
               tar -xzf runtime/site.tar.gz -C site
             fi
             cp site/data/latest.json runtime/previous_manifest.json
+            # Missing only on the first rollout. Other download failures must
+            # fail closed: a retry must not invent another draw for this day.
+            seed_assets=$(gh release view arena-data --json assets --jq '.assets[].name')
+            if echo "$seed_assets" | grep -qx 'seed-round.json'; then
+              gh release download arena-data --pattern seed-round.json --dir runtime
+            fi
           fi
       - name: Check participant folders and official rule-bot hashes
         id: plan
         run: python arena/plan.py
+      - name: Freeze shared daily seed draw before any matches
+        if: steps.plan.outputs.seed_round_changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view arena-data >/dev/null 2>&1; then
+            gh release create arena-data --title 'OSL latest broadcast data' --notes 'Current paired-seat results and shared seed round. No model weights.'
+          fi
+          gh release upload arena-data runtime/seed-round.json --clobber
       - name: Restore recordings only when publication is needed
         if: steps.plan.outputs.publish == 'true'
         env:

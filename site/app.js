@@ -1,5 +1,6 @@
 import {setupPairNavigation} from './pair-navigation.js';
-import {renderRankingHistory} from './ranking-history.js?v=historyfold1';
+import {renderRankingHistory} from './ranking-history.js?v=seedround1';
+import {renderSeedRound} from './seed-round.js?v=seedround1';
 import {cloudPulse} from './cloud-pulse.js';
 const $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pct=n=>Number.isFinite(n)?`${(n*100).toFixed(1)}%`:'—', num=n=>Number.isFinite(n)?n.toLocaleString('zh-TW',{maximumFractionDigits:1}):'—';
@@ -12,7 +13,7 @@ const name=id=>data?.players.find(p=>p.id===id)?.name??id, player=id=>data.playe
 const base=()=>`data/pairs/${pair.key}/`;
 const expectedPairs=()=>data.expected_pairs??data.players.length*(data.players.length-1)/2,expectedGames=()=>data.expected_games??expectedPairs()*100;
 function node(id,html){$(id).innerHTML=html;}
-function countdown(){if(!data)return;const p=cloudPulse(data,cloudMeta),diff=Math.ceil((p.due-Date.now())/1000);$('countdown').textContent=p.status==='checking'?'雲端檢查／比賽中':p.status==='failed'?'最近檢查失敗':p.status==='delayed'?'排程已逾時':p.status==='unverified'?'狀態待確認':diff>0?clock(diff):'等待下一輪啟動';$('nextCheck').textContent=p.hasClock?`雲端計時預計 ${new Date(p.due).toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})} · 平台排隊可能延遲`:'每5分鐘檢查 · 正在確認雲端計時狀態';$('updated').textContent=`最近成功檢查 ${date(p.checked)} · 成績發布 ${date(data.updated_at)}`;const labels={checking:'正在檢查模型／更新賽事',delayed:'自動檢查逾時 · 成績未更新',failed:'最近檢查失敗 · 舊成績保留',unverified:'雲端狀態暫時無法確認'};$('cloudState').textContent=labels[p.status]??(p.noChange?'已檢查 · 模型無變更':data.complete_round_robin?'全輪戰績已就緒':data.total_games?'部分賽事已完成':'等待參賽模型');$('pollWarning').hidden=!p.message;$('pollWarning').textContent=p.message;}
+function countdown(){if(!data)return;renderSeedRound(data.seed_round);const p=cloudPulse(data,cloudMeta),diff=Math.ceil((p.due-Date.now())/1000);$('countdown').textContent=p.status==='checking'?'雲端檢查／比賽中':p.status==='failed'?'最近檢查失敗':p.status==='delayed'?'排程已逾時':p.status==='unverified'?'狀態待確認':diff>0?clock(diff):'等待下一輪啟動';$('nextCheck').textContent=p.hasClock?`雲端計時預計 ${new Date(p.due).toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})} · 平台排隊可能延遲`:'每5分鐘檢查 · 正在確認雲端計時狀態';$('updated').textContent=`最近成功檢查 ${date(p.checked)} · 成績發布 ${date(data.updated_at)}`;const labels={checking:'正在檢查模型／更新賽事',delayed:'自動檢查逾時 · 成績未更新',failed:'最近檢查失敗 · 舊成績保留',unverified:'雲端狀態暫時無法確認'};$('cloudState').textContent=labels[p.status]??(p.noChange?'已檢查 · 模型無變更':data.complete_round_robin?'全輪戰績已就緒':data.total_games?'部分賽事已完成':'等待參賽模型');$('pollWarning').hidden=!p.message;$('pollWarning').textContent=p.message;}
 async function cloudStatus(){if(!data||Date.now()-cloudFetched<300000)return;cloudFetched=Date.now();try{const response=await fetch(`https://api.github.com/repos/${data.repository}/actions/runs?per_page=12`,{cache:'no-cache'});if(!response.ok)throw Error(response.status);cloudMeta={runs:(await response.json()).workflow_runs,unavailable:false};}catch{cloudMeta={...cloudMeta,unavailable:true};}countdown();}
 
 async function refresh(){

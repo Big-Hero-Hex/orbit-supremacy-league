@@ -21,7 +21,9 @@ def snapshot(state, recorded_at=None):
     key=hashlib.sha256(json.dumps(competitive,sort_keys=True,separators=(',',':')).encode()).hexdigest()[:24]
     return dict(key=key,recorded_at=recorded_at or state.get('recorded_at') or state.get('updated_at'),players=rows,pairs=pairs,
                 total_games=state.get('total_games') or sum(r['games'] for r in rows)//2,
-                complete_round_robin=bool(state.get('complete_round_robin',len(pairs)==len(people)*(len(people)-1)//2)),protocol=protocol)
+                complete_round_robin=bool(state.get('complete_round_robin',len(pairs)==len(people)*(len(people)-1)//2)),protocol=protocol,
+                seed_round={k:state['seed_round'].get(k) for k in ('id','starts_at','next_rotation_at')} if state.get('seed_round') else None,
+                rules_protocol=hashlib.sha256(json.dumps({k:v for k,v in state.get('protocol',{}).items() if k!='seeds'},sort_keys=True,separators=(',',':')).encode()).hexdigest()[:16])
 
 
 def annotate_history(entries):
@@ -50,7 +52,11 @@ def annotate_history(entries):
             if removed:
                 kinds.append('participant_removed');notes.append('移出對手：'+'、'.join(p['name'] for p in removed))
             if previous.get('protocol')!=point.get('protocol'):
-                kinds.append('protocol_change');notes.append('賽制／評估版本變更')
+                rotated=bool(previous.get('seed_round') and point.get('seed_round') and previous['seed_round']['id']!=point['seed_round']['id'])
+                if rotated:
+                    kinds.append('seed_rotation');notes.append('共同開局輪替：'+point['seed_round']['id'])
+                if not rotated or previous.get('rules_protocol')!=point.get('rules_protocol'):
+                    kinds.append('protocol_change');notes.append('賽制／評估版本變更')
             if not notes:
                 kinds.append('results_update');notes.append('戰績補齊／結果更新（未偵測到模型換版）')
         point.update(model_updates=updates,participants_added=added,participants_removed=removed,
@@ -65,6 +71,11 @@ def update_history(previous, archived, state):
     entries=list(previous.get('ranking_history',[]))
     def add(point):
         if point and (not entries or entries[-1]['key']!=point['key']):entries.append(point)
+        elif point:
+            # Metadata migration is not a new score point or a model update.
+            entries[-1]=dict(entries[-1])
+            for field in ('seed_round','rules_protocol'):
+                if point.get(field) and not entries[-1].get(field):entries[-1][field]=point[field]
     if not entries:
         for old in archived:add(snapshot(old))
     add(snapshot(previous))
@@ -73,7 +84,7 @@ def update_history(previous, archived, state):
 
 
 def export_history(folder, entries):
-    fields=['snapshot','recorded_at','player_id','name','rank','score_rate','points','games','wins','losses','draws','win_rate','opponents','model_sha256','complete_round_robin','protocol','changed_player_ids','changed_player_names','change_summary','model_updates_json']
+    fields=['snapshot','recorded_at','player_id','name','rank','score_rate','points','games','wins','losses','draws','win_rate','opponents','model_sha256','complete_round_robin','protocol','seed_round_id','seed_round_starts_at','next_seed_rotation_at','changed_player_ids','changed_player_names','change_summary','model_updates_json']
     with (Path(folder)/'ranking_history.csv').open('w',newline='',encoding='utf-8-sig') as stream:
         writer=csv.DictWriter(stream,fieldnames=fields);writer.writeheader()
         for index,point in enumerate(annotate_history(entries),1):
@@ -81,6 +92,7 @@ def export_history(folder, entries):
                 writer.writerow(dict(snapshot=index,recorded_at=point['recorded_at'],player_id=row['id'],name=row['name'],
                     **{k:row.get(k) for k in ('rank','score_rate','points','games','wins','losses','draws','win_rate','opponents')},
                     model_sha256=row['sha256'],complete_round_robin=point['complete_round_robin'],protocol=point['protocol'],
+                    seed_round_id=(point.get('seed_round') or {}).get('id'),seed_round_starts_at=(point.get('seed_round') or {}).get('starts_at'),next_seed_rotation_at=(point.get('seed_round') or {}).get('next_rotation_at'),
                     changed_player_ids=';'.join(p['id'] for p in point['model_updates']),
                     changed_player_names='、'.join(p['name'] for p in point['model_updates']),
                     change_summary=point['change_summary'],model_updates_json=json.dumps(point['model_updates'],ensure_ascii=False)))

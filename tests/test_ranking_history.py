@@ -60,4 +60,27 @@ class RankingHistoryTests(unittest.TestCase):
         self.assertEqual([p['key'] for p in h],[p['key'] for p in original]);self.assertEqual(annotate_history(h),h)
         self.assertNotIn('model_updates',original[0]);self.assertEqual(len(h),2)
 
+    def test_seed_rotation_is_distinct_from_rules_and_model_changes(self):
+        a=self.state();a['seed_round']={'id':'legacy-s01','starts_at':None,'next_rotation_at':'2026-10-21T20:00:00Z'};a['protocol']['seeds']=[1,2]
+        a['ranking_history']=update_history({},[],a)
+        b=copy.deepcopy(a);b['seed_round']['id']='daily-20261022';b['protocol']['seeds']=[3,4]
+        h=update_history(a,[],b);self.assertEqual(h[-1]['change_kinds'],['seed_rotation']);self.assertEqual(h[-1]['model_updates'],[])
+        b['players'][0]['sha256']='new'
+        h=update_history(a,[],b);self.assertEqual(h[-1]['change_kinds'],['model_update','seed_rotation'])
+        b['protocol']['version']=2
+        self.assertIn('protocol_change',update_history(a,[],b)[-1]['change_kinds'])
+        with tempfile.TemporaryDirectory() as t:
+            export_history(t,h)
+            with (Path(t)/'ranking_history.csv').open(encoding='utf-8-sig') as f:rows=list(csv.DictReader(f))
+            self.assertEqual(rows[-1]['seed_round_id'],'daily-20261022')
+
+    def test_metadata_migration_keeps_original_time_and_score_without_new_point(self):
+        a=self.state();a['ranking_history']=update_history({},[],a)
+        # Existing production snapshots predate the new fields.
+        a['ranking_history'][0].pop('seed_round');a['ranking_history'][0].pop('rules_protocol')
+        b=copy.deepcopy(a);b['updated_at']='2026-10-21T15:00:00Z';b['seed_round']={'id':'legacy-s01','starts_at':None,'next_rotation_at':'2026-10-21T20:00:00Z'}
+        h=update_history(a,[],b)
+        self.assertEqual(len(h),1);self.assertEqual(h[0]['recorded_at'],a['updated_at'])
+        self.assertEqual(h[0]['seed_round']['id'],'legacy-s01');self.assertTrue(h[0]['rules_protocol'])
+
 if __name__=='__main__':unittest.main()

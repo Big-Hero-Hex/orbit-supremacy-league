@@ -42,6 +42,9 @@ try{
  await page.goto(preview,{waitUntil:'networkidle'});
  await page.waitForFunction(()=>document.querySelectorAll('.leader-row').length===6);
  await page.waitForFunction(()=>document.querySelectorAll('#rankingChart circle').length===18);
+ assert.ok((await page.locator('#seedRoundName').textContent()).includes('20261022'));
+ assert.ok((await page.locator('#seedRoundNext').textContent()).includes('04:00:00'));
+ assert.ok((await page.locator('#seedRoundCountdown').textContent()).includes('換輪倒數'));
  await page.selectOption('#rankingMetric','rank');assert.ok((await page.locator('#rankingChart').textContent()).includes('#1'));
  await page.locator('#rankingLegend button').first().click();assert.equal(await page.locator('#rankingChart circle').count(),15);
  await page.locator('#rankingLegend button').first().click();assert.equal(await page.locator('#rankingChart circle').count(),18);
@@ -51,6 +54,9 @@ try{
  assert.ok((await page.locator('#rankingLatestUpdate').textContent()).includes(fixture.state.ranking_history.at(-1).change_summary));
  await page.locator('#rankingUpdates>summary').press('Enter');
  assert.equal(await page.locator('#rankingUpdates').evaluate(e=>e.open),true);
+ await page.locator('#rankingChanges button[data-index="2"]').click();
+ assert.ok((await page.locator('#rankingDetail').textContent()).includes('共同開局輪替'));
+ assert.equal(await page.locator('#rankingDetail .version-change').count(),0);
  await page.locator('#rankingChanges button[data-index="1"]').click();
  for(const p of fixture.state.players.slice(0,2))assert.ok((await page.locator('#rankingDetail').textContent()).includes(p.name+' 換版'));
  assert.equal(await page.locator('#rankingDetail .version-change').count(),2);
@@ -60,6 +66,7 @@ try{
  await page.locator('#rankingChart circle[data-index="1"]').nth(2).focus();
  assert.equal(await page.locator('#rankingDetail .version-change').count(),2,'third participant curve still lists both actual model updates');
  results.push('History attribution: simultaneous updates list both names and old/new SHA even on another participant curve');
+ results.push('Daily shared seeds: Taipei 04:00/countdown visible; seed-only rotation clearly distinguished from model replacements');
  await page.locator('#rankingUpdates>summary').click();
  assert.equal(await page.locator('#rankingUpdates').evaluate(e=>e.open),false);
  results.push('History disclosure: closed by default, latest summary visible, keyboard expansion, all model SHA available, collapse supported');
