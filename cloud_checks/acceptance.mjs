@@ -1,7 +1,7 @@
 import {chromium} from 'playwright';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
-const url='https://jasonliaojcs.github.io/orbit-supremacy-league/';
+const url='https://big-hero-hex.github.io/orbit-supremacy-league/';
 let state;
 // A push also starts Pages deployment; wait for that version rather than testing
 // the preceding release and misreporting a missing new feature as a regression.

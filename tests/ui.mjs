@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {resolve,extname} from 'node:path';
 const fixture=JSON.parse(readFileSync('runtime/ui-fixture.json','utf8'));
-const liveState=await (await fetch('https://jasonliaojcs.github.io/orbit-supremacy-league/data/latest.json')).json();
+const liveState=await (await fetch('https://big-hero-hex.github.io/orbit-supremacy-league/data/latest.json')).json();
 // Preview the checked-out release on the cloud runner: ranked games may still
 // be publishing, so a test must not accidentally exercise the preceding JS.
 const root=resolve('site');
@@ -26,7 +26,7 @@ const errors=[];const results=[];
 try{
  const real=await browser.newPage({viewport:{width:1440,height:1000},deviceScaleFactor:1});
  real.on('pageerror',e=>errors.push(String(e)));
- await real.goto('https://jasonliaojcs.github.io/orbit-supremacy-league/',{waitUntil:'networkidle'});
+ await real.goto('https://big-hero-hex.github.io/orbit-supremacy-league/',{waitUntil:'networkidle'});
  await real.locator('.roster-card').first().waitFor();
  assert.equal(await real.locator('.roster-card').count(),liveState.players.length);
  assert.equal(await real.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
