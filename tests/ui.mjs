@@ -107,6 +107,15 @@ try{
  assert.ok(Number(await page.locator('#seek').inputValue())>0);
  await page.locator('.event-chip').first().click();await page.selectOption('#statsScope','pair');
  assert.equal(await page.locator('#detailedStats th').count(),3);
+ assert.equal(await page.locator('#openingPanel').evaluate(e=>e.open),false,'advanced opening diagnostics stay collapsed by default');
+ assert.ok((await page.locator('#openingSummary').textContent()).includes('未開火先失船最高'));
+ await page.locator('#openingPanel>summary').click();assert.equal(await page.locator('#openingStats th').count(),3);assert.equal(await page.locator('#openingStats tbody tr').count(),10);
+ assert.ok((await page.locator('#openingStats').textContent()).includes('25 / 50'));
+ await page.selectOption('#resultFilter','silent');assert.equal(await page.locator('.game-row').count(),25);await page.locator('.game-row').first().click();
+ await page.waitForFunction(()=>!document.getElementById('gameOpening').hidden&&document.getElementById('gameOpening').textContent.includes('整局未開火'));await page.selectOption('#resultFilter','');
+ await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await page.locator('#openingPanel').screenshot({path:'runtime/ui-check/opening-mobile-fixture-only.png'});await page.setViewportSize({width:1440,height:1000});
+ results.push('Opening diagnostics: collapsed by default, pair-scoped silent-loss table, silent-loss replay filter, per-game opening line, mobile no overflow');
  await page.locator('.pair-tab').nth(2).click();await page.waitForFunction(()=>document.getElementById('screenEmpty').hidden===true);
  await page.screenshot({path:'runtime/ui-check/ui-fixture-only.png',fullPage:true});
  results.push('UI fixtures only: 15 pairs,30 matrix cells,20-game guide/10 each seat, all100 option, teachers have no upload link, seed/playback/event/pair statistics');
