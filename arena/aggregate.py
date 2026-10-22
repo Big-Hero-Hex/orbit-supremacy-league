@@ -5,6 +5,7 @@ from pathlib import Path
 import random
 import statistics
 from common import read, write
+import diagnostics
 import opening
 
 METRICS = ("gun_shots","laser_shots","weapon_hits","pilot_weapon_kills","fire_requests","ship_ticks","pilot_ticks","empty_ammo_ticks","pickups","respawns","ejects","kills","ram_kills")
@@ -93,6 +94,7 @@ def standings(players, pairs):
         row = stats(games,player["id"]); row["id"] = player["id"]
         row["opponents"] = len([p for p in pairs if player["id"] in (p["a"],p["b"])])
         row["opening"] = opening.summary(games,player["id"])
+        row["diagnostics"] = diagnostics.summary(games,player["id"])
         rows.append(row)
     rows.sort(key=lambda r:(-r["score_rate"],r["id"]))
     for i,r in enumerate(rows):
@@ -129,3 +131,4 @@ def export_tables(folder, state):
         models.append({"player_id":p["id"],"name":p["name"],"status":p["status"],"filename":p.get("filename"),"sha256":p.get("sha256"),"size_bytes":p.get("size_bytes"),"parameters":info.get("parameters"),"content_verified_at":p.get("content_verified_at"),"participant_kind":p.get('kind','neural_model'),"controller_source":p.get('source','participant_uploaded_zip')})
     table("models.csv",models,["player_id","name","status","filename","sha256","size_bytes","parameters","content_verified_at","participant_kind","controller_source"])
     opening.export(folder,state)
+    diagnostics.export(folder,state)

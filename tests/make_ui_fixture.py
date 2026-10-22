@@ -9,9 +9,11 @@ from common import now, seeds
 from ranking_history import snapshot, annotate_history
 from highlights import viewing_guide
 import opening
+import diagnostics
 
 root=Path(__file__).resolve().parents[1]
 config=json.loads((root/"arena.json").read_text())
+record={"ticks":100,"walls":[],"ship_polygon":[[0,-20],[-13,14],[13,14]],"pilot_polygon":[[0,-9],[-6,6],[6,6]],"frames":[{"t":t,"s":[[300+t,400,0,1,0,3,0,0,0],[900-t,400,3.14,1,0,3,0,0,0]],"a":[],"b":[],"p":[],"e":[]} for t in range(0,101,2)]}
 players=[{**p,"sha256":str(i)*64,"status":"ready","filename":"UI-TEST-ONLY.zip"} for i,p in enumerate(config["players"],1)]
 pairs=[]
 for a,b in itertools.combinations(players,2):
@@ -25,10 +27,12 @@ for a,b in itertools.combinations(players,2):
         loser=r["assignment"]["ship2"];silent=i%4==0
         r["opening"]={"version":opening.VERSION,"players":{r["winner"]:{"first_shot":30,"first_loss":None,"shots_before_loss":3,"trigger_before_loss":12,"aim_before_loss":.6,"exact":True},
             loser:{"first_shot":None if silent else 40,"first_loss":50,"shots_before_loss":0 if silent else 1,"trigger_before_loss":0 if silent else 4,"aim_before_loss":.1 if silent else .4,"exact":True}}}
+        r["diagnostics"]=diagnostics.game_diagnostics(r,record)
     raw["model_info"]={a["id"]:{"parameters":589828},b["id"]:{"parameters":589828}}
     pairs.append(summarize(raw,job,{}))
-for pair in pairs:pair['viewing_guide']=viewing_guide(pair['games'],pair['a'],pair['b']);pair['opening']={p:opening.summary(pair['games'],p) for p in (pair['a'],pair['b'])}
+for pair in pairs:pair['viewing_guide']=viewing_guide(pair['games'],pair['a'],pair['b']);pair['opening']={p:opening.summary(pair['games'],p) for p in (pair['a'],pair['b'])};pair['diagnostics']={p:diagnostics.summary(pair['games'],p) for p in (pair['a'],pair['b'])}
 state={**config,"players":players,"pairs":pairs,"standings":standings(players,pairs),"total_games":len(pairs)*100,"expected_pairs":len(pairs),"expected_games":len(pairs)*100,"complete_round_robin":True,"status":"complete","checked_at":now(),"updated_at":now(),"failures":[]}
+diagnostics.annotate(state)
 state['ranking_history']=[]
 for i in range(3):
     earlier=copy.deepcopy(state);earlier['updated_at']=f'2026-10-20T{10+i}:00:00Z'
@@ -42,6 +46,6 @@ for i in range(3):
     state['ranking_history'].append(snapshot(earlier))
 state['ranking_history']=annotate_history(state['ranking_history'])
 state['seed_round']=earlier['seed_round'];state['protocol']=earlier['protocol']
-record={"ticks":100,"assignment":pairs[0]["games"][0]["assignment"],"walls":[],"ship_polygon":[[0,-20],[-13,14],[13,14]],"pilot_polygon":[[0,-9],[-6,6],[6,6]],"frames":[{"t":t,"s":[[300+t,400,0,1,0,3,0,0,0],[900-t,400,3.14,1,0,3,0,0,0]],"a":[],"b":[],"p":[],"e":[]} for t in range(0,101,2)]}
+record["assignment"]=pairs[0]["games"][0]["assignment"]
 (root/"runtime").mkdir(exist_ok=True)
 (root/"runtime/ui-fixture.json").write_text(json.dumps({"state":state,"record":record},ensure_ascii=False))

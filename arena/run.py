@@ -8,7 +8,8 @@ from aggregate import export_csv, export_tables, standings, summarize
 from ranking_history import update_history, export_history
 from common import ROOT, next_check, now, read, write
 from highlights import viewing_guide
-from opening import attach
+import diagnostics
+import opening
 
 def main():
     plan = read(ROOT/"runtime/plan.json")
@@ -62,8 +63,10 @@ def main():
     state["failures"] = failures
     # Opening diagnostics only read stored recordings, so cached pairs are
     # back-filled without replaying a game or touching the locked match core.
-    missing = sum(attach(pair,ROOT/"site/data/pairs"/pair["key"]) for pair in state["pairs"])
+    missing = sum(opening.attach(pair,ROOT/"site/data/pairs"/pair["key"]) for pair in state["pairs"])
+    missing += sum(diagnostics.attach(pair,ROOT/"site/data/pairs"/pair["key"]) for pair in state["pairs"])
     state["standings"] = standings(state["players"],state["pairs"])
+    diagnostics.annotate(state)
     state["total_games"] = sum(len(p["games"]) for p in state["pairs"])
     expected=len(state['players'])*(len(state['players'])-1)//2
     state['expected_pairs']=expected;state['expected_games']=expected*100
@@ -87,6 +90,6 @@ def main():
     if base.exists():
         for path in base.iterdir():
             if path.is_dir() and path.name not in keep: shutil.rmtree(path)
-    print(f"Published {state['total_games']} completed games. Failed pairs: {len(failures)}. Games without opening diagnostics: {missing}")
+    print(f"Published {state['total_games']} completed games. Failed pairs: {len(failures)}. Game records without opening/weakness diagnostics: {missing}")
 
 if __name__ == "__main__": main()
