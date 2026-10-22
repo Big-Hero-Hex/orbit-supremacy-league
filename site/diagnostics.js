@@ -37,3 +37,14 @@ function renderWeakness(f){
  const behind=f.behind.length?`<ul class="diag-behind">${f.behind.map(s=>`<li>${esc(s.label)}：<b>${fmt(s.value,s.unit)}</b> · 最佳 ${fmt(s.best,s.unit)} · 第 ${s.rank}/${s.of}</li>`).join('')}</ul>`:'<p class="muted">沒有排名墊底的技術指標。</p>';
  return `${situations}<p class="diag-paths">輸掉的 ${p.lost_games} 局：飛行員被撞死 ${p.pilot_rammed}${p.rammed_examples?.length?`（${replays(p.rammed_examples)}）`:''}、被射殺 ${p.pilot_shot}；開局未開火就先失船 ${p.silent_first_loss}；先擊落對手卻仍輸 ${p.led_then_lost}。</p><h5>明顯落後的技術指標</h5>${behind}${renderConditions(f.opening_conditions)}${renderVersions(f.version_comparison)}`;
 }
+// Same keys as arena/mistakes.py METRICS; each value is a share of applicable ticks.
+const mistakes=[['open_not_turning','開局沒轉向對手'],['missed_shot','能命中卻不開火'],['blocked_fire','射線被擋仍開火'],['exposed_unarmed','被瞄準時沒面向敵人'],
+ ['thrust_away_close','近距離背對推進'],['pilot_exposed','飛行員暴露在敵船視線'],['finish_passive','不追擊近處敵方飛行員'],['empty_charge','空彈還衝向敵人']];
+/** rows: [{id, m}] with each player's conceptual-mistake summary for the scope. */
+export function renderMistakes(rows,name){
+ const ready=rows.filter(r=>r.m?.games);
+ if(!ready.length)return '<p class="empty">尚無概念性失誤資料；下一次雲端發布會從既有動作／觀測紀錄補算。</p>';
+ const line=(label,values,unit,worse)=>{const known=values.filter(Number.isFinite),worst=known.length>1?(worse==='high'?Math.max(...known):Math.min(...known)):null;
+  return `<tr><td>${label}</td>${values.map(v=>`<td${Number.isFinite(v)&&v===worst?' class="diag-worst" title="此範圍內最差"':''}>${unit==='deg'?(Number.isFinite(v)?`${v.toFixed(0)}°`:'—'):unit==='cos'?(Number.isFinite(v)?v.toFixed(2):'—'):fmt(v,'pct')}</td>`).join('')}</tr>`;};
+ return `<table><thead><tr><th>失誤（發生 tick ÷ 適用 tick）</th>${ready.map(r=>`<th>${esc(name(r.id))}</th>`).join('')}</tr></thead><tbody>${mistakes.map(([key,label])=>line(label,ready.map(r=>r.m.rates[key]),'pct','high')).join('')}${line('開局 1 秒偏離提前量（中位）',ready.map(r=>r.m.angle_1s_median),'deg','high')}${line('飛行員逃離方向 cos（越高越好）',ready.map(r=>r.m.pilot_flee_cos),'cos','low')}</tbody></table>`;
+}

@@ -9,6 +9,7 @@ from ranking_history import update_history, export_history
 from common import ROOT, next_check, now, read, write
 from highlights import viewing_guide
 import diagnostics
+import mistakes
 import opening
 
 def main():
@@ -65,8 +66,16 @@ def main():
     # back-filled without replaying a game or touching the locked match core.
     missing = sum(opening.attach(pair,ROOT/"site/data/pairs"/pair["key"]) for pair in state["pairs"])
     missing += sum(diagnostics.attach(pair,ROOT/"site/data/pairs"/pair["key"]) for pair in state["pairs"])
+    # Tick-level records are heavy, so they live in their own cache file
+    # rather than latest.json; only changed pairs read their audit logs.
+    cached = read(ROOT/"site/data/mistakes_games.json",{}) or {}
+    cached = cached.get("pairs",{}) if cached.get("version")==mistakes.VERSION else {}
+    records = {}
+    for pair in state["pairs"]:
+        records[pair["key"]],failed = mistakes.attach(pair,ROOT/"site/data/pairs"/pair["key"],cached); missing += failed
     state["standings"] = standings(state["players"],state["pairs"])
     diagnostics.annotate(state,previous)
+    mistakes.annotate(state,records)
     state["total_games"] = sum(len(p["games"]) for p in state["pairs"])
     expected=len(state['players'])*(len(state['players'])-1)//2
     state['expected_pairs']=expected;state['expected_games']=expected*100
@@ -82,6 +91,7 @@ def main():
     export_history(ROOT/'site/data',state['ranking_history'])
     export_csv(ROOT/"site/data/results.csv",state["pairs"])
     export_tables(ROOT/"site/data",state)
+    mistakes.export(ROOT/"site/data",state,records)
     write(ROOT/"site/data/latest.json",state)
     # Current broadcast only, with all historical tables kept in history.json.
     # Old binaries are not silently accumulated in Git history or Actions cache.

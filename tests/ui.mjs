@@ -122,7 +122,7 @@ try{
  await page.locator('#weaknessList a.diag-replay').first().click();await page.waitForFunction(()=>document.getElementById('screenEmpty').hidden===true);
  assert.equal(await page.locator('.game-row.active').getAttribute('data-game'),decodeURIComponent(link.split('/')[1].split('@')[0]));
  await page.selectOption('#statsScope','all');assert.ok((await page.locator('#weaknessList').textContent()).includes('個百分點'));assert.ok((await page.locator('#weaknessList').textContent()).includes('開局條件'));
- assert.equal(await page.locator('#diagSkills th').count(),7);assert.equal(await page.locator('#weaknessPlayer option').count(),6);await page.selectOption('#statsScope','pair');
+ assert.equal(await page.locator('#diagSkills th').count(),7);assert.equal(await page.locator('#mistakeTable th').count(),7);assert.equal(await page.locator('#mistakeTable tbody tr').count(),10);assert.equal(await page.locator('#weaknessPlayer option').count(),6);await page.selectOption('#statsScope','pair');
  results.push('Opening + weakness diagnostics: collapsed by default, pair/all scoped tables, player weakness selector, replay links, opening conditions, version comparison, silent-loss filter, per-game opening line, mobile no overflow');
  const target=fixture.state.pairs[3],game=target.games[7];
  const linked=await browser.newPage({viewport:{width:1440,height:1000}});linked.on('pageerror',e=>errors.push(String(e)));
