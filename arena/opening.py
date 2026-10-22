@@ -48,18 +48,26 @@ def read_actions(path):
     if len(values) != shape[0] * 6: raise ValueError("Truncated action array")
     return values, shape[0]
 
-def discharges(frames, seat):
-    """Window-end tick of every actual gun/laser discharge by one seat.
+def heading_error(me, them):
+    """Radians between a ship's nose and the direction to another object.
 
-    A window counts the ammo + laser charges that disappeared, or one shot when
-    the weapon cooldown was re-armed (a reload in the same window hides the ammo
+    Ship nose is local (0,-20) rotated by angle: heading (sin a, -cos a)."""
+    return abs(wrap(math.atan2(them[1] - me[1], them[0] - me[0]) - math.atan2(-math.cos(me[2]), math.sin(me[2]))))
+
+def fired(before, after, ticks):
+    """Discharges between two frames of one ship.
+
+    Counts the ammo + laser charges that disappeared, or one shot when the
+    weapon cooldown was re-armed (a reload in the same window hides the ammo
     drop, never the cooldown)."""
+    spent = max(0, before[5] - after[5]) + max(0, before[7] - after[7])
+    return max(spent, int(after[6] > max(0, before[6] - ticks)))
+
+def discharges(frames, seat):
+    """Window-end tick of every actual gun/laser discharge by one seat."""
     ticks = []
     for p, c in zip(frames, frames[1:]):
-        before, after = p["s"][seat], c["s"][seat]
-        spent = max(0, before[5] - after[5]) + max(0, before[7] - after[7])
-        rearmed = after[6] > max(0, before[6] - (c["t"] - p["t"]))
-        ticks += [c["t"]] * max(spent, int(rearmed))
+        ticks += [c["t"]] * fired(p["s"][seat], c["s"][seat], c["t"] - p["t"])
     return ticks
 
 def game_opening(row, record, actions=None):
@@ -79,9 +87,7 @@ def game_opening(row, record, actions=None):
             if loss is not None and f["t"] >= loss: break
             me, them = f["s"][seat], f["s"][1 - seat]
             if not (me[3] and not me[4] and them[3]): continue
-            # Ship nose is local (0,-20) rotated by angle: heading (sin a, -cos a).
-            error = wrap(math.atan2(them[1] - me[1], them[0] - me[0]) - math.atan2(-math.cos(me[2]), math.sin(me[2])))
-            sampled += 1; aimed += abs(error) <= math.radians(AIM_DEGREES)
+            sampled += 1; aimed += heading_error(me, them) <= math.radians(AIM_DEGREES)
         trigger = None
         if actions is not None:
             values, steps = actions

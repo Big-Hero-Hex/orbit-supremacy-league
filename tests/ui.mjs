@@ -115,7 +115,11 @@ try{
  await page.waitForFunction(()=>!document.getElementById('gameOpening').hidden&&document.getElementById('gameOpening').textContent.includes('整局未開火'));await page.selectOption('#resultFilter','');
  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  await page.locator('#openingPanel').screenshot({path:'runtime/ui-check/opening-mobile-fixture-only.png'});await page.setViewportSize({width:1440,height:1000});
- results.push('Opening diagnostics: collapsed by default, pair-scoped silent-loss table, silent-loss replay filter, per-game opening line, mobile no overflow');
+ assert.equal(await page.locator('#diagSkills th').count(),3);assert.equal(await page.locator('#weaknessPlayer option').count(),2);
+ assert.ok((await page.locator('#weaknessList').textContent()).includes('輸掉的'));
+ await page.selectOption('#weaknessPlayer',{index:1});assert.ok((await page.locator('#weaknessList').textContent()).includes('輸掉的'));
+ await page.selectOption('#statsScope','all');assert.equal(await page.locator('#diagSkills th').count(),7);assert.equal(await page.locator('#weaknessPlayer option').count(),6);await page.selectOption('#statsScope','pair');
+ results.push('Opening + weakness diagnostics: collapsed by default, pair/all scoped tables, player weakness selector, silent-loss filter, per-game opening line, mobile no overflow');
  await page.locator('.pair-tab').nth(2).click();await page.waitForFunction(()=>document.getElementById('screenEmpty').hidden===true);
  await page.screenshot({path:'runtime/ui-check/ui-fixture-only.png',fullPage:true});
  results.push('UI fixtures only: 15 pairs,30 matrix cells,20-game guide/10 each seat, all100 option, teachers have no upload link, seed/playback/event/pair statistics');
