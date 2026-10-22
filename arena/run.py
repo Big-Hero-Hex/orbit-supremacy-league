@@ -66,7 +66,7 @@ def main():
     missing = sum(opening.attach(pair,ROOT/"site/data/pairs"/pair["key"]) for pair in state["pairs"])
     missing += sum(diagnostics.attach(pair,ROOT/"site/data/pairs"/pair["key"]) for pair in state["pairs"])
     state["standings"] = standings(state["players"],state["pairs"])
-    diagnostics.annotate(state)
+    diagnostics.annotate(state,previous)
     state["total_games"] = sum(len(p["games"]) for p in state["pairs"])
     expected=len(state['players'])*(len(state['players'])-1)//2
     state['expected_pairs']=expected;state['expected_games']=expected*100

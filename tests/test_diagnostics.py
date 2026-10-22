@@ -42,6 +42,9 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual((b["pilot_samples"],b["pilot_distance_sum"]),(2,230.0))
         # Red has no ammo, so blue is never under aim from a loaded gun.
         self.assertEqual(a["exposed_samples"],0)
+        self.assertEqual(a["spawn"],{"error_deg":0.0,"distance":600,"face_tick":1,"opening_pressure":None})
+        self.assertEqual(b["spawn"],{"error_deg":180.0,"distance":600,"face_tick":None,"opening_pressure":1.0})
+        self.assertEqual(b["moments"],{"empty_loss":[9],"away_loss":[9],"finish_fail":[],"rammed":15,"asteroid":3})
         row,record=self.game(rammed=False)
         self.assertEqual(game_diagnostics(row,record)["players"]["b"]["pilot_shot"],1)
     def test_summary_rates_situations_and_loss_paths(self):
@@ -87,5 +90,27 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual([(r["scope"],r["player_id"]) for r in table],[("all","a"),("all","b"),("pair","a"),("pair","b")])
         self.assertEqual(report["players"]["b"]["loss_paths"]["lost_games"],1)
         self.assertIn("## 甲（a）",markdown);self.assertIn("被撞死",markdown)
+
+    def test_examples_link_failure_moments_lost_games_first(self):
+        row,record=self.game();row["diagnostics"]=game_diagnostics(row,record);row["opening"]=opening.game_opening(row,record)
+        won={**row,"id":"4-ship1","seed":4,"winner":"b"}
+        self.assertEqual(diagnostics.examples([("k",won),("k",row)],"b","loss_while_empty"),
+                         [{"pair":"k","game_id":"5-ship1","at":0},{"pair":"k","game_id":"4-ship1","at":0}])
+        self.assertEqual(diagnostics.rammed_examples([("k",row)],"b"),[{"pair":"k","game_id":"5-ship1","at":0}])
+    def test_versions_refresh_within_round_and_compare_against_previous_model(self):
+        def state(sha,round_id,silent,score):
+            diag={"games":100,"score_rate":score,"rates":{k:.5 for k,*_ in diagnostics.SKILLS}}
+            return {"players":[{"id":"a","sha256":sha}],"seed_round":{"id":round_id},"updated_at":round_id,
+                    "standings":[{"id":"a","games":100,"score_rate":score,"opening":{"silent_loss_rate":silent},"diagnostics":diag}],"pairs":[]}
+        v=diagnostics.track_versions(None,state("old","r1",.6,.7))
+        v=diagnostics.track_versions(v,state("old","r1",.5,.7))
+        self.assertEqual([(e["sha256"],e["metrics"]["silent_loss_rate"]) for e in v["a"]],[("old",.5)])
+        v=diagnostics.track_versions(v,state("old","r2",.55,.7));v=diagnostics.track_versions(v,state("new","r2",.2,.8))
+        c=diagnostics.comparison(v["a"])
+        self.assertEqual((c["previous_version"]["sha256"],c["previous_version"]["same_round"]),("old",True))
+        silent=next(r for r in c["previous_version"]["rows"] if r["metric"]=="silent_loss_rate")
+        self.assertAlmostEqual(silent["change"],-.35);self.assertTrue(silent["improved"])
+        self.assertIsNone(c["same_model_earlier_round"])
+        self.assertIsNone(diagnostics.comparison(diagnostics.track_versions(None,state("old","r1",.6,.7))["a"])["previous_version"])
 
 if __name__=="__main__":unittest.main()

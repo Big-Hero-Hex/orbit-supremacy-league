@@ -14,11 +14,12 @@ from pathlib import Path
 import opening
 from opening import fired, heading_error, read_replay, wrap
 
-VERSION = 1
+VERSION = 2
 AIM = math.radians(opening.AIM_DEGREES)
 EXPOSED = math.radians(10)
 AWAY = math.radians(90)
 SAMPLE_SECONDS = 2 / 50
+PRESSURE_TICKS = 75
 COUNTERS = ("ship_samples", "aim_on", "speed_samples", "speed_sum", "turn_flips", "exposed_samples", "exposed_on",
             "shots_seen", "shots_aimed", "asteroid_hits", "losses", "losses_empty", "losses_facing_away",
             "pilot_saved", "pilot_shot", "pilot_rammed", "pilot_samples", "pilot_distance_sum", "finish_success", "finish_fail")
@@ -33,6 +34,23 @@ def game_diagnostics(row, record):
     for seat, sid in enumerate(("ship1", "ship2")):
         pid = row["assignment"][sid]; opp = row["assignment"]["ship2" if seat == 0 else "ship1"]
         c = dict.fromkeys(COUNTERS, 0); finish = []; last = 0
+        # Ticks of each failure, so a report can link straight to the moment.
+        moments = {"empty_loss": [], "away_loss": [], "finish_fail": [], "rammed": None,
+                   "asteroid": next((e["tick"] for e in timeline if e["kind"] == "asteroid_hit" and e["by"] == pid), None)}
+        me, them = frames[0]["s"][seat], frames[0]["s"][1 - seat]
+        spawn = {"error_deg": round(math.degrees(heading_error(me, them)), 1), "distance": round(math.hypot(them[0] - me[0], them[1] - me[1]))}
+        # Opening pressure: share of the first 1.5 s that a loaded enemy ship had
+        # its nose on this player. A fixed window keeps it independent of when
+        # the player fires or dies, so it can be compared with those outcomes.
+        aimed = pressured = 0
+        for f in frames:
+            if f["t"] > PRESSURE_TICKS: break
+            me, them = f["s"][seat], f["s"][1 - seat]
+            if me[3] and not me[4] and them[3] and not them[4] and (them[5] or them[7]):
+                pressured += 1; aimed += heading_error(them, me) <= EXPOSED
+        spawn["face_tick"] = next((f["t"] for f in frames if f["s"][seat][3] and not f["s"][seat][4] and f["s"][1 - seat][3]
+                                   and heading_error(f["s"][seat], f["s"][1 - seat]) <= AIM), None)
+        spawn["opening_pressure"] = round(aimed / pressured, 3) if pressured else None
         for p, f in zip(frames, frames[1:]):
             prev, me, them = p["s"][seat], f["s"][seat], f["s"][1 - seat]
             if not (me[3] and them[3]): continue
@@ -61,19 +79,24 @@ def game_diagnostics(row, record):
                 i = bisect.bisect_left(times, e["tick"]) - 1
                 if i >= 0:
                     me, them = frames[i]["s"][seat], frames[i]["s"][1 - seat]
-                    c["losses"] += 1; c["losses_empty"] += me[5] == 0 and me[7] == 0
-                    c["losses_facing_away"] += heading_error(me, them) > AWAY
+                    empty, away = me[5] == 0 and me[7] == 0, heading_error(me, them) > AWAY
+                    c["losses"] += 1; c["losses_empty"] += empty; c["losses_facing_away"] += away
+                    if empty: moments["empty_loss"].append(e["tick"])
+                    if away: moments["away_loss"].append(e["tick"])
             # A pilot either respawns or is killed (which ends the game); a
             # timeout in between counts as neither.
             end = next((x for x in timeline[k + 1:] if (x["kind"] == "kill" and x.get("target") == victim) or (x["kind"] == "respawn" and x["by"] == victim)), None)
             if end is None: continue
             if victim == opp:
                 if end["kind"] == "kill": c["finish_success"] += 1; finish.append(end["tick"] - e["tick"])
-                else: c["finish_fail"] += 1
+                else: c["finish_fail"] += 1; moments["finish_fail"].append(e["tick"])
             elif end["kind"] == "respawn": c["pilot_saved"] += 1
-            else: c["pilot_rammed" if rammed else "pilot_shot"] += 1
+            else:
+                c["pilot_rammed" if rammed else "pilot_shot"] += 1
+                if rammed: moments["rammed"] = end["tick"]
         c["speed_sum"] = round(c["speed_sum"], 3); c["pilot_distance_sum"] = round(c["pilot_distance_sum"], 1)
-        players[pid] = {**c, "finish_ticks": finish, "lost_first_ship_first": None if len(first) != 1 else int(pid in first)}
+        players[pid] = {**c, "finish_ticks": finish, "lost_first_ship_first": None if len(first) != 1 else int(pid in first),
+                        "spawn": spawn, "moments": moments}
     return {"version": VERSION, "players": players}
 
 def attach(pair, folder):
@@ -88,6 +111,10 @@ def attach(pair, folder):
 
 def ready(row):
     return (row.get("diagnostics") or {}).get("version") == VERSION
+
+def first_loss(row, player):
+    o = ((row.get("opening") or {}).get("players") or {}).get(player)
+    return o["first_loss"] if o else None
 
 def silent(row, player):
     o = ((row.get("opening") or {}).get("players") or {}).get(player)
@@ -106,6 +133,18 @@ SITUATIONS = (
     ("loss_while_empty", "空彈且無雷射時被擊落", lambda r, p, d: d["losses_empty"] > 0),
     ("loss_facing_away", "背對敵人時被擊落", lambda r, p, d: d["losses_facing_away"] > 0),
     ("shot_into_asteroid", "子彈打到小行星", lambda r, p, d: d["asteroid_hits"] > 0))
+
+# Tick a situation's replay link jumps to (two seconds earlier is shown).
+MOMENTS = {
+    "silent_first_loss": lambda r, p, d: first_loss(r, p),
+    "opponent_fired_first": lambda r, p, d: next(v["first_shot"] for k, v in r["opening"]["players"].items() if k != p),
+    "lost_first_ship_first": lambda r, p, d: first_loss(r, p),
+    "finish_failed": lambda r, p, d: d["moments"]["finish_fail"][0],
+    "loss_while_empty": lambda r, p, d: d["moments"]["empty_loss"][0],
+    "loss_facing_away": lambda r, p, d: d["moments"]["away_loss"][0],
+    "shot_into_asteroid": lambda r, p, d: d["moments"]["asteroid"]}
+SPAWN_BUCKETS = ((0, 45), (45, 90), (90, 135), (135, 181))
+PRESSURE_BUCKETS = ((0, .2, "低（<20%）"), (.2, .5, "中（20–50%）"), (.5, 1.01, "高（≥50%）"))
 
 # (key, label, which direction is better, unit). Speed and turning style are
 # shown for context without ranking: neither direction is better by itself.
@@ -159,7 +198,16 @@ def summary(games, player):
              "silent_first_loss": sum(silent(r, player) for r in lost),
              "led_then_lost": sum(r["diagnostics"]["players"][player]["lost_first_ship_first"] == 0 for r in lost)}
     paths["pilot_shot"] = len(lost) - paths["pilot_rammed"]
-    return {"games": len(rows), "score_rate": score(rows), "rates": rates, "situations": situations, "loss_paths": paths, "counts": t}
+    def group(rs, label):
+        ships = [r for r in rs if first_loss(r, player) is not None]; face = [r["diagnostics"]["players"][player]["spawn"]["face_tick"] for r in rs]
+        return {"label": label, "games": len(rs), "score_rate": score(rs), "lost_first_ship": len(ships),
+                "silent_loss_rate": ratio(sum(silent(r, player) for r in ships), len(ships)),
+                "face_median_s": statistics.median(x / 50 for x in face if x is not None) if any(x is not None for x in face) else None}
+    spawn = lambda r: r["diagnostics"]["players"][player]["spawn"]
+    conditions = {"spawn": [group([r for r in rows if lo <= spawn(r)["error_deg"] < hi], f"{lo}–{min(hi, 180)}°") for lo, hi in SPAWN_BUCKETS],
+                  "pressure": [group([r for r in rows if spawn(r)["opening_pressure"] is not None and lo <= spawn(r)["opening_pressure"] < hi], label) for lo, hi, label in PRESSURE_BUCKETS]}
+    return {"games": len(rows), "score_rate": score(rows), "rates": rates, "situations": situations, "loss_paths": paths,
+            "opening_conditions": conditions, "counts": t}
 
 def findings(own, references):
     """Rank one player's situations by points lost and skills against references."""
@@ -176,20 +224,117 @@ def findings(own, references):
                          if (own["situations"][key]["points_lost"] or 0) > 0 and own["situations"][key]["games"] >= 3),
                         key=lambda s: -s["points_lost"])
     return {"games": own["games"], "situations": situations, "skills": skills,
-            "behind": [s for s in skills if s["behind"]], "loss_paths": own["loss_paths"]}
+            "behind": [s for s in skills if s["behind"]], "loss_paths": own["loss_paths"], "opening_conditions": own.get("opening_conditions")}
 
-def annotate(state):
-    """Weakness findings for every player, overall and within each pair."""
+def examples(games, player, key, limit=3):
+    """Replays where a situation happened, lost games first: (pair, game, seconds)."""
+    happened = dict((k, f) for k, _, f in SITUATIONS)[key]
+    hits = [(pair, r) for pair, r in games if ready(r) and happened(r, player, r["diagnostics"]["players"][player])]
+    hits.sort(key=lambda x: (x[1]["winner"] == player, x[1]["seed"], x[1]["a_seat"]))
+    out = []
+    for pair, r in hits[:limit]:
+        tick = MOMENTS[key](r, player, r["diagnostics"]["players"][player])
+        out.append({"pair": pair, "game_id": r["id"], "at": max(0, round((tick or 0) / 50 - 2, 1))})
+    return out
+
+def rammed_examples(games, player, limit=3):
+    hits = [(pair, r) for pair, r in games if ready(r) and r["diagnostics"]["players"][player]["moments"]["rammed"]]
+    hits.sort(key=lambda x: (x[1]["seed"], x[1]["a_seat"]))
+    return [{"pair": pair, "game_id": r["id"], "at": max(0, round(r["diagnostics"]["players"][player]["moments"]["rammed"] / 50 - 2, 1))} for pair, r in hits[:limit]]
+
+def with_examples(found, games, player):
+    for s in found["situations"]: s["examples"] = examples(games, player, s["situation"])
+    found["loss_paths"] = {**found["loss_paths"], "rammed_examples": rammed_examples(games, player)}
+    return found
+
+# Tracked across model versions: (key, label, which direction is better).
+TRACKED = (("score_rate", "積分率", "high"), ("silent_loss_rate", "未開火先失船", "low"), ("fired_first_rate", "搶先開火率", "high"),
+           ("aim_share", "船型時對準敵人", "high"), ("accuracy", "命中率", "high"), ("enemy_accuracy", "被命中率", "low"),
+           ("exposed_share", "被持彈敵人瞄準的時間", "low"), ("loss_facing_away_share", "失船時背對敵人", "low"),
+           ("loss_empty_share", "失船時空彈", "low"), ("asteroid_share", "子彈打到小行星", "low"),
+           ("pilot_survival", "飛行員存活到復活", "high"), ("pilot_rammed_share", "飛行員死亡中被撞死", "low"), ("finish_rate", "擊落後補刀成功", "high"))
+KEEP_VERSIONS = 12
+
+def tracked(score_rate, opening_summary, diag):
+    values = {"score_rate": score_rate, "silent_loss_rate": (opening_summary or {}).get("silent_loss_rate"),
+              "fired_first_rate": (opening_summary or {}).get("fired_first_rate")}
+    return {k: values.get(k, diag["rates"].get(k)) for k, *_ in TRACKED}
+
+def track_versions(previous, state):
+    """One entry per player model per seed round; a repeat publish refreshes it."""
+    versions = {pid: list(v) for pid, v in (previous or {}).items()}
+    sha = {p["id"]: p.get("sha256") for p in state["players"]}; round_id = (state.get("seed_round") or {}).get("id")
+    for r in state["standings"]:
+        if not (r.get("diagnostics") or {}).get("games"): continue
+        pid = r["id"]; opponents = {}
+        for pair in state["pairs"]:
+            if pid not in (pair["a"], pair["b"]) or not (pair.get("diagnostics") or {}).get(pid, {}).get("games"): continue
+            opp = pair["b"] if pair["a"] == pid else pair["a"]
+            own = pair["diagnostics"][pid]
+            opponents[opp] = {"sha256": (pair.get("hashes") or {}).get(opp), "games": own["games"],
+                              "metrics": tracked(own["score_rate"], (pair.get("opening") or {}).get(pid), own)}
+        entry = {"sha256": sha.get(pid), "seed_round": round_id, "first_seen": state.get("updated_at"), "updated_at": state.get("updated_at"),
+                 "games": r["diagnostics"]["games"], "metrics": tracked(r["diagnostics"]["score_rate"], r.get("opening"), r["diagnostics"]), "opponents": opponents}
+        history = versions.setdefault(pid, [])
+        if history and history[-1]["sha256"] == entry["sha256"] and history[-1]["seed_round"] == entry["seed_round"]:
+            entry["first_seen"] = history[-1]["first_seen"]; history[-1] = entry
+        else: history.append(entry)
+        del history[:-KEEP_VERSIONS]
+    return versions
+
+def compare(before, after):
+    rows = []
+    for key, label, better in TRACKED:
+        a, b = before.get(key), after.get(key)
+        change = None if a is None or b is None else b - a
+        rows.append({"metric": key, "label": label, "before": a, "after": b, "change": change,
+                     "improved": None if not change else (change > 0) == (better == "high")})
+    return rows
+
+def comparison(history):
+    """Latest version against the previous different model, plus same-model noise."""
+    if not history: return None
+    now = history[-1]; meta = lambda h: {k: h[k] for k in ("sha256", "seed_round", "games", "first_seen")}
+    before = next((h for h in reversed(history[:-1]) if h["sha256"] != now["sha256"]), None)
+    same = next((h for h in reversed(history[:-1]) if h["sha256"] == now["sha256"]), None)
+    out = {"current": meta(now), "previous_version": None, "same_model_earlier_round": None}
+    if before:
+        out["previous_version"] = {**meta(before), "same_round": before["seed_round"] == now["seed_round"], "rows": compare(before["metrics"], now["metrics"]),
+                                   "opponents": {opp: {"same_opponent_version": before["opponents"][opp]["sha256"] == o["sha256"],
+                                                       "rows": compare(before["opponents"][opp]["metrics"], o["metrics"])}
+                                                 for opp, o in now["opponents"].items() if opp in before["opponents"]}}
+    if same: out["same_model_earlier_round"] = {**meta(same), "rows": compare(same["metrics"], now["metrics"])}
+    return out
+
+def annotate(state, previous=None):
+    """Weakness findings for every player, overall and within each pair, with
+    replay examples and the comparison against the player's previous model."""
     rows = {r["id"]: r.get("diagnostics") for r in state["standings"]}
-    state["weaknesses"] = {pid: findings(own, [o for k, o in rows.items() if k != pid]) for pid, own in rows.items() if own and own["games"]}
+    games = {pid: [(p["key"], r) for p in state["pairs"] if pid in (p["a"], p["b"]) for r in p["games"]] for pid in rows}
+    state["diagnostic_versions"] = track_versions((previous or {}).get("diagnostic_versions"), state)
+    state["weaknesses"] = {pid: {**with_examples(findings(own, [o for k, o in rows.items() if k != pid]), games[pid], pid),
+                                 "version_comparison": comparison(state["diagnostic_versions"].get(pid, []))}
+                           for pid, own in rows.items() if own and own["games"]}
     for pair in state["pairs"]:
         own = pair.get("diagnostics") or {}
-        pair["weaknesses"] = {pid: findings(own[pid], [own[opp]]) for pid, opp in ((pair["a"], pair["b"]), (pair["b"], pair["a"]))
-                              if own.get(pid, {}).get("games") and own.get(opp)}
+        pair["weaknesses"] = {pid: with_examples(findings(own[pid], [own[opp]]), [(pair["key"], r) for r in pair["games"]], pid)
+                              for pid, opp in ((pair["a"], pair["b"]), (pair["b"], pair["a"])) if own.get(pid, {}).get("games") and own.get(opp)}
 
 def fmt(value, unit):
     if value is None: return "—"
     return f"{value * 100:.1f}%" if unit == "pct" else f"{value:.2f}s" if unit == "s" else f"{value:.1f}{' ' + unit if unit else ''}"
+
+def site_url(state):
+    owner, repo = state.get("repository", "/").split("/", 1)
+    return f"https://{owner.lower()}.github.io/{repo}/"
+
+def links(state, items):
+    return " ".join(f"[▶{i}]({site_url(state)}#game={x['pair']}/{x['game_id']}@{x['at']})" for i, x in enumerate(items, 1)) or "—"
+
+def change_text(row):
+    if row["change"] is None: return "—"
+    verdict = {True: " 改善", False: " 退步"}.get(row["improved"], "")
+    return f"{row['change'] * 100:+.1f} 個百分點{verdict}"
 
 def report_markdown(state):
     people = {p["id"]: p for p in state["players"]}; standing = {r["id"]: r for r in state["standings"]}
@@ -201,16 +346,33 @@ def report_markdown(state):
         s = standing[pid]; paths = found["loss_paths"]
         lines += [f"## {people[pid]['name']}（{pid}）· 第 {s['rank']} 名 · 積分率 {s['score_rate'] * 100:.1f}% · {found['games']} 局", ""]
         if found["situations"]:
-            lines += ["### 依估計失分排序的情境", "", "| 情境 | 發生局數 | 發生時積分率 | 未發生時積分率 | 估計失分 |", "|---|---:|---:|---:|---:|"]
-            lines += [f"| {x['label']} | {x['games']} | {fmt(x['score_rate_when'], 'pct')} | {fmt(x['score_rate_otherwise'], 'pct')} | {x['points_lost']:.1f} |" for x in found["situations"]]
+            lines += ["### 依估計失分排序的情境", "", "| 情境 | 發生局數 | 發生時積分率 | 未發生時積分率 | 估計失分 | 重播（失誤前2秒） |", "|---|---:|---:|---:|---:|---|"]
+            lines += [f"| {x['label']} | {x['games']} | {fmt(x['score_rate_when'], 'pct')} | {fmt(x['score_rate_otherwise'], 'pct')} | {x['points_lost']:.1f} | {links(state, x.get('examples', []))} |" for x in found["situations"]]
             lines.append("")
         lines += [f"### 輸掉的 {paths['lost_games']} 局怎麼輸", "",
-                  f"- 最後飛行員被撞死 {paths['pilot_rammed']} 局、被射殺 {paths['pilot_shot']} 局",
+                  f"- 最後飛行員被撞死 {paths['pilot_rammed']} 局、被射殺 {paths['pilot_shot']} 局（被撞重播：{links(state, paths.get('rammed_examples', []))}）",
                   f"- 開局未開火就先失船 {paths['silent_first_loss']} 局；先擊落對手卻仍輸 {paths['led_then_lost']} 局", ""]
         if found["behind"]:
             lines += ["### 明顯落後的技術指標", "", "| 指標 | 本人 | 聯賽最佳 | 其他人中位數 | 名次 |", "|---|---:|---:|---:|---:|"]
             lines += [f"| {x['label']} | {fmt(x['value'], x['unit'])} | {fmt(x['best'], x['unit'])} | {fmt(x['others_median'], x['unit'])} | {x['rank']}/{x['of']} |" for x in found["behind"]]
             lines.append("")
+        conditions = found.get("opening_conditions")
+        if conditions:
+            lines += ["### 開局條件", "", "出生朝向＝出生時機頭偏離對手的角度；開局被瞄準＝開賽頭 1.5 秒內，被持彈敵人瞄準（±10°）的時間比例。", "",
+                      "| 分組 | 局數 | 未開火先失船 | 對準所需時間（中位） | 積分率 |", "|---|---:|---:|---:|---:|"]
+            lines += [f"| {kind} {g['label']} | {g['games']} | {fmt(g['silent_loss_rate'], 'pct')} | {fmt(g['face_median_s'], 's')} | {fmt(g['score_rate'], 'pct')} |"
+                      for kind, groups in (("出生朝向", conditions["spawn"]), ("開局被瞄準", conditions["pressure"])) for g in groups if g["games"]]
+            lines.append("")
+        versions = found.get("version_comparison") or {}
+        before = versions.get("previous_version")
+        if before:
+            lines += [f"### 與上一版比較（上一版 {before['sha256'][:12]} · 開局輪 {before['seed_round']} → 目前 {versions['current']['sha256'][:12]} · {versions['current']['seed_round']}）", "",
+                      "不同開局輪或對手也換版時，變化不能全歸因於模型。" if not before["same_round"] else "同一開局輪。", "",
+                      "| 指標 | 上一版 | 目前 | 變化 |", "|---|---:|---:|---|"]
+            lines += [f"| {x['label']} | {fmt(x['before'], 'pct')} | {fmt(x['after'], 'pct')} | {change_text(x)} |" for x in before["rows"]]
+            lines.append("")
+        elif versions:
+            lines += ["### 與上一版比較", "", "尚無上一版的診斷紀錄；下一次換版後會自動比較。", ""]
     lines += ["## 資料檔", "", "- `data/diagnostics_log.csv`：逐局×選手原始計數", "- `data/weakness_summary.csv`：各範圍比例與情境失分",
               "- `data/opening_log.csv`、`data/opening_summary.csv`：開局失船前火力", "- `data/weakness_report.json`：本報告的機器可讀版本", ""]
     return "\n".join(lines)
