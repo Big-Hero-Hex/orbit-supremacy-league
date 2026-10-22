@@ -18,9 +18,22 @@ export function renderDiagnostics(rows,name,selected){
  const ids=ready.filter(r=>r.found).map(r=>r.id),pick=ids.includes(selected)?selected:ids[0],found=ready.find(r=>r.id===pick)?.found;
  return {skills:table,options:ids.map(id=>`<option value="${esc(id)}"${id===pick?' selected':''}>${esc(name(id))}</option>`).join(''),selected:pick??null,weakness:found?renderWeakness(found):''};
 }
+const replays=items=>items?.length?items.map((x,i)=>`<a class="diag-replay" href="#game=${encodeURIComponent(x.pair)}/${encodeURIComponent(x.game_id)}@${x.at}" title="開啟重播，從失誤前 2 秒開始">▶${i+1}</a>`).join(''):'—';
+const change=r=>!Number.isFinite(r.change)?'—':`<span class="${r.improved?'diag-better':r.improved===false?'diag-worse':''}">${r.change>0?'+':''}${(r.change*100).toFixed(1)} 個百分點${r.improved?' 改善':r.improved===false?' 退步':''}</span>`;
+function renderConditions(c){
+ if(!c)return '';
+ const rows=[['出生朝向',c.spawn],['開局被瞄準',c.pressure]].flatMap(([kind,groups])=>groups.filter(g=>g.games).map(g=>`<tr><td>${kind} ${esc(g.label)}</td><td>${g.games}</td><td>${fmt(g.silent_loss_rate,'pct')}</td><td>${fmt(g.face_median_s,'s')}</td><td>${fmt(g.score_rate,'pct')}</td></tr>`)).join('');
+ return `<h5>開局條件</h5><p class="muted">出生朝向＝出生時機頭偏離對手的角度；開局被瞄準＝開賽頭 1.5 秒內被持彈敵人瞄準的時間比例。未開火先失船以有失船的局為分母。</p><table><thead><tr><th>分組</th><th>局數</th><th>未開火先失船</th><th>對準所需時間（中位）</th><th>積分率</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function renderVersions(v){
+ if(!v)return '';
+ const b=v.previous_version;
+ if(!b)return '<h5>與上一版比較</h5><p class="muted">尚無上一版的診斷紀錄；下一次換版後會自動比較。</p>';
+ return `<h5>與上一版比較</h5><p class="muted">上一版 <code>${esc(b.sha256.slice(0,12))}</code>（開局輪 ${esc(b.seed_round)}）→ 目前 <code>${esc(v.current.sha256.slice(0,12))}</code>（${esc(v.current.seed_round)}）。${b.same_round?'同一開局輪。':'開局輪不同，對手也可能換版，變化不能全歸因於模型。'}</p><table><thead><tr><th>指標</th><th>上一版</th><th>目前</th><th>變化</th></tr></thead><tbody>${b.rows.map(r=>`<tr><td>${esc(r.label)}</td><td>${fmt(r.before,'pct')}</td><td>${fmt(r.after,'pct')}</td><td>${change(r)}</td></tr>`).join('')}</tbody></table>`;
+}
 function renderWeakness(f){
  const p=f.loss_paths;
- const situations=f.situations.length?`<table><thead><tr><th>情境（依估計失分排序）</th><th>發生局數</th><th>發生時積分率</th><th>未發生時</th><th>估計失分</th></tr></thead><tbody>${f.situations.map(s=>`<tr><td>${esc(s.label)}</td><td>${s.games}</td><td>${fmt(s.score_rate_when,'pct')}</td><td>${fmt(s.score_rate_otherwise,'pct')}</td><td>${s.points_lost.toFixed(1)}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">此範圍沒有明顯失分情境。</p>';
+ const situations=f.situations.length?`<table><thead><tr><th>情境（依估計失分排序）</th><th>發生局數</th><th>發生時積分率</th><th>未發生時</th><th>估計失分</th><th>重播</th></tr></thead><tbody>${f.situations.map(s=>`<tr><td>${esc(s.label)}</td><td>${s.games}</td><td>${fmt(s.score_rate_when,'pct')}</td><td>${fmt(s.score_rate_otherwise,'pct')}</td><td>${s.points_lost.toFixed(1)}</td><td>${replays(s.examples)}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">此範圍沒有明顯失分情境。</p>';
  const behind=f.behind.length?`<ul class="diag-behind">${f.behind.map(s=>`<li>${esc(s.label)}：<b>${fmt(s.value,s.unit)}</b> · 最佳 ${fmt(s.best,s.unit)} · 第 ${s.rank}/${s.of}</li>`).join('')}</ul>`:'<p class="muted">沒有排名墊底的技術指標。</p>';
- return `${situations}<p class="diag-paths">輸掉的 ${p.lost_games} 局：飛行員被撞死 ${p.pilot_rammed}、被射殺 ${p.pilot_shot}；開局未開火就先失船 ${p.silent_first_loss}；先擊落對手卻仍輸 ${p.led_then_lost}。</p><h5>明顯落後的技術指標</h5>${behind}`;
+ return `${situations}<p class="diag-paths">輸掉的 ${p.lost_games} 局：飛行員被撞死 ${p.pilot_rammed}${p.rammed_examples?.length?`（${replays(p.rammed_examples)}）`:''}、被射殺 ${p.pilot_shot}；開局未開火就先失船 ${p.silent_first_loss}；先擊落對手卻仍輸 ${p.led_then_lost}。</p><h5>明顯落後的技術指標</h5>${behind}${renderConditions(f.opening_conditions)}${renderVersions(f.version_comparison)}`;
 }

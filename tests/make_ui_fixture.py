@@ -32,7 +32,10 @@ for a,b in itertools.combinations(players,2):
     pairs.append(summarize(raw,job,{}))
 for pair in pairs:pair['viewing_guide']=viewing_guide(pair['games'],pair['a'],pair['b']);pair['opening']={p:opening.summary(pair['games'],p) for p in (pair['a'],pair['b'])};pair['diagnostics']={p:diagnostics.summary(pair['games'],p) for p in (pair['a'],pair['b'])}
 state={**config,"players":players,"pairs":pairs,"standings":standings(players,pairs),"total_games":len(pairs)*100,"expected_pairs":len(pairs),"expected_games":len(pairs)*100,"complete_round_robin":True,"status":"complete","checked_at":now(),"updated_at":now(),"failures":[]}
+# A synthetic earlier model per player, so the version comparison renders.
 diagnostics.annotate(state)
+older={pid:[{**v[-1],'sha256':'old-'+pid,'metrics':{k:(x*.8 if isinstance(x,float) else x) for k,x in v[-1]['metrics'].items()}}] for pid,v in state['diagnostic_versions'].items()}
+diagnostics.annotate(state,{'diagnostic_versions':older})
 state['ranking_history']=[]
 for i in range(3):
     earlier=copy.deepcopy(state);earlier['updated_at']=f'2026-10-20T{10+i}:00:00Z'
