@@ -1,7 +1,7 @@
 import {setupPairNavigation} from './pair-navigation.js';
 import {renderRankingHistory} from './ranking-history.js?v=seedround1';
 import {renderSeedRound} from './seed-round.js?v=seedround1';
-import {cloudPulse} from './cloud-pulse.js';
+import {cloudPulse} from './cloud-pulse.js?v=model-readiness1';
 import {renderOpening,openingLine,anySilentLoss} from './opening.js?v=diag3';
 import {renderDiagnostics,renderMistakes} from './diagnostics.js?v=diag3';
 const $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
