@@ -37,6 +37,9 @@ try{
  writeFileSync('runtime/ui-check/production-mobile-diagnostic.json',JSON.stringify(await real.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth,wide:[...document.querySelectorAll('main *')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).map(e=>({tag:e.tagName,id:e.id,class:e.className,right:e.getBoundingClientRect().right,client:e.clientWidth,scroll:e.scrollWidth})).slice(0,60)})),null,2));
  results.push(`Production mobile overflow: ${realMobileOverflow}; independently verify current checkout below`);
  const page=await browser.newPage({viewport:{width:1440,height:1000}});page.on('pageerror',e=>errors.push(String(e)));
+ // The synthetic seed round is fixed on 2026-10-22. Do not let this
+ // countdown assertion expire as the real calendar advances.
+ await page.clock.setFixedTime(new Date('2026-10-22T06:00:00Z'));
  await page.route('**/data/latest.json',route=>route.fulfill({json:fixture.state}));
  await page.route('**/replays/*.json.gz',route=>route.fulfill({contentType:'application/gzip',body:gzipSync(JSON.stringify(fixture.record))}));
  await page.goto(preview,{waitUntil:'networkidle'});
@@ -140,6 +143,7 @@ try{
  // Exercise real rendered failure/recovery text with explicitly mocked status,
  // without running a game or changing the real published scores.
  let pulseReads=0;const pulse=await browser.newPage({viewport:{width:1440,height:1000}});pulse.on('pageerror',e=>errors.push(String(e)));
+ await pulse.route('**/data/latest.json',route=>route.fulfill({json:fixture.state}));
  await pulse.route('**/api.github.com/repos/*/orbit-supremacy-league/actions/runs?*',route=>{
   pulseReads++;const now=Date.now();return route.fulfill({json:{workflow_runs:[{id:'ui-test-only',path:'.github/workflows/league.yml',status:'completed',conclusion:'success',updated_at:new Date(now-(pulseReads===1?3600000:10000)).toISOString()},{path:'.github/workflows/poll-clock.yml',status:'waiting',created_at:new Date(now-(pulseReads===1?3600000:10000)).toISOString()}]}});
  });
@@ -150,6 +154,19 @@ try{
  assert.equal(pulseReads,2,'manual refresh must bypass five-minute API cache');assert.equal(await pulse.locator('#pollWarning').isVisible(),false);
  await pulse.locator('.broadcast-status').screenshot({path:'runtime/ui-check/recovered-status-fixture-only.png'});
  results.push('Mocked cloud status: stale warning visible, manual refresh refetches API immediately, healthy unchanged recovery hides warning');
+ const blocked=await browser.newPage({viewport:{width:1440,height:1000}});blocked.on('pageerror',e=>errors.push(String(e)));
+ const invalid=structuredClone(fixture.state),bad=invalid.players.find(p=>p.kind!=='official_rulebot');
+ bad.status='invalid';bad.message='不是可用的模型 ZIP：缺少 data、policy.pth';
+ await blocked.route('**/data/latest.json',route=>route.fulfill({json:invalid}));
+ await blocked.route('**/api.github.com/repos/*/orbit-supremacy-league/actions/runs?*',route=>route.fulfill({json:{workflow_runs:[{id:'ui-blocked-test',path:'.github/workflows/league.yml',status:'completed',conclusion:'success',updated_at:new Date().toISOString()}]}}));
+ await blocked.goto(preview,{waitUntil:'networkidle'});
+ await blocked.waitForFunction(()=>document.getElementById('cloudState').textContent.includes('部分選手'));
+ assert.ok((await blocked.locator('#roster').textContent()).includes('模型ZIP格式不符'));
+ assert.ok((await blocked.locator('#pollWarning').textContent()).includes('policy.pth'));
+ assert.equal(await blocked.locator('#pollWarning').isVisible(),true);
+ await blocked.locator('.broadcast-status').screenshot({path:'runtime/ui-check/invalid-model-status-fixture-only.png'});
+ results.push('Invalid uploaded ZIP: explicit roster and visible blocked reason despite a successful scheduler check');
+ await blocked.close();
  assert.equal(realMobileOverflow,false,'Published mobile layout must not overflow');
  assert.deepEqual(errors,[]);writeFileSync('runtime/ui-check/results.json',JSON.stringify({passed:true,results,errors,fixture_scores_are_not_real_results:true},null,2));console.log(results.join('\n'));
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
