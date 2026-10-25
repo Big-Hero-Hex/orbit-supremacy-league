@@ -1,4 +1,4 @@
-import contextlib,io,json,os,sys,tempfile,unittest
+import contextlib,io,json,os,sys,tempfile,unittest,zipfile
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'arena'))
@@ -15,7 +15,9 @@ class TeacherTests(unittest.TestCase):
             config=dict(title='test',english_title='test',season=1,repository='test/test',drive_folder='test',seed_namespace='test',players=[dict(id=str(i),name=str(i),folder=str(i)) for i in range(4)])
             write(root/'arena.json',config);write(root/'fixture_manifest.json',{'models/rusher_bot.py':'a'*64,'models/sniper_bot.py':'b'*64})
             def meta(folder):return [dict(file_id=folder,filename='own.zip',metadata_fingerprint='revision0')]
-            def get(pid,target):Path(target).write_bytes(('model'+pid).encode())
+            def get(pid,target):
+                with zipfile.ZipFile(target,'w') as z:
+                    z.writestr('data',json.dumps({'fixture':pid}));z.writestr('policy.pth',b'not-executed-fixture')
             with patch.object(plan,'ROOT',root),patch.object(plan,'model_metadata',side_effect=meta) as metadata,patch.object(plan,'download',side_effect=get) as download,patch.dict(os.environ,GITHUB_EVENT_NAME='workflow_dispatch',GITHUB_OUTPUT=''):
                 with contextlib.redirect_stdout(io.StringIO()):plan.main()
                 old=read(root/'site/data/latest.json');old['pairs']=[dict(key=j['key'],a=j['a']['id'],b=j['b']['id'],complete=True) for j in read(root/'runtime/plan.json')['jobs']];write(root/'site/data/latest.json',old)

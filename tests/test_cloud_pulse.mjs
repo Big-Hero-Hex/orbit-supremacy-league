@@ -12,3 +12,7 @@ assert.equal(cloudPulse(data,{unavailable:true,runs:[good]},now).status,'unverif
 assert.equal(cloudPulse({...data,cloud_run:'2'},{runs:[good,clock]},now).noChange,false);
 assert.equal(cloudPulse(data,{runs:[good,{...clock,created_at:'2026-10-20T15:21:00Z'}]},now).status,'idle','five-minute cached status must not falsely report an outage');
 console.log('8 cloud pulse checks passed: stale ≠ nochange, server clock, active, failed, delayed, API unavailable, published, cache grace');
+const blocked=cloudPulse({...data,players:[{id:'lee',name:'李',status:'invalid',message:'缺少 policy.pth'}]},{runs:[good,clock]},now);
+assert.equal(blocked.status,'blocked');assert.equal(blocked.noChange,false);assert.match(blocked.message,/policy.pth/);
+assert.equal(cloudPulse({...data,failures:[{a:'a',b:'b',message:'載入失敗，30分鐘後重試'}]},{runs:[good,clock]},now).status,'blocked');
+console.log('Invalid uploads/runtime failures remain visible after a successful scheduler check.');

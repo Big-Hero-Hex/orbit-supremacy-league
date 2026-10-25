@@ -7,6 +7,8 @@ from common import ROOT, digest, now, pair_key, read, seeds, write,engine_revisi
 from drive import model_metadata, download
 from participants import builtin_identity
 from seed_round import select_round
+from model_archive import VERSION as ARCHIVE_VERSION, validate_archive
+from failures import retry_deferred
 
 def main():
     config = read(ROOT / "arena.json")
@@ -38,11 +40,17 @@ def main():
                 verified=old.get("content_verified_at")
                 age=(datetime.now(timezone.utc)-datetime.fromisoformat(verified.replace("Z","+00:00"))).total_seconds() if verified else float("inf")
                 if (file.get("metadata_fingerprint") and file["metadata_fingerprint"]==old.get("metadata_fingerprint")
-                        and old.get("sha256") and old.get("status")=="ready" and age<86400):
-                    p.update(file);p.update(status="ready",sha256=old["sha256"],size_bytes=old["size_bytes"],content_verified_at=verified)
+                        and old.get("sha256") and old.get("status") in ("ready", "invalid") and age<86400
+                        and old.get('archive_validation', {}).get('version') == ARCHIVE_VERSION):
+                    p.update(file);p.update(status=old['status'],sha256=old["sha256"],size_bytes=old["size_bytes"],content_verified_at=verified,
+                                           archive_validation=old['archive_validation'])
+                    if old['status'] == 'invalid':p['message'] = old['message']
                 else:
                     download(file["file_id"], target);downloads+=1
                     p.update(file);p.update(status="ready",sha256=digest(target),size_bytes=target.stat().st_size,content_verified_at=now())
+                    p['archive_validation'] = validate_archive(target)
+                    if p['archive_validation']['status'] == 'invalid':
+                        p.update(status='invalid', message=p['archive_validation']['message'])
         except Exception as exc:
             p.update(status="error", message=str(exc)[:250])
         players.append(p)
@@ -53,12 +61,16 @@ def main():
                 "game_hash": read(ROOT / "fixture_manifest.json", {}).get("envs/game.py", "pending"),
                 "engine_revision": engine_revision(ROOT)}
     jobs = []; active_pairs = []; old = {p["key"]: p for p in previous.get("pairs", [])}
+    old_failures = {f['key']: f for f in previous.get('failures', [])}
+    deferred = []
     for a, b in itertools.combinations(players, 2):
         if a["status"] != "ready" or b["status"] != "ready": continue
         key = pair_key(a, b, protocol)
         cached = old.get(key)
         if cached and cached.get("complete") and cached.get("key") == key:
             active_pairs.append(cached)
+        elif retry_deferred(old_failures.get(key, {})):
+            deferred.append(old_failures[key])
         else:
             jobs.append({"key": key, "a": a, "b": b, "seeds": protocol["seeds"]})
     # When a changed player needs a match, retrieve the unchanged opponent only
@@ -71,7 +83,7 @@ def main():
             download(p["file_id"],target);downloads+=1
             if digest(target)!=p["sha256"]:raise ValueError("模型在配對凍結後換版，保留上一份結果並等待下一次檢查")
     def comparable(ps):
-        return [{k:p.get(k) for k in ("id","status","sha256","filename","message","metadata_fingerprint","content_verified_at")} for p in ps]
+        return [{k:p.get(k) for k in ("id","status","sha256","filename","message","metadata_fingerprint","content_verified_at","archive_validation")} for p in ps]
     ui_revision=site_revision(ROOT)
     publish=bool(jobs or comparable(players)!=comparable(previous.get("players",[])) or previous.get("protocol")!=protocol or previous.get('seed_round')!=seed_round or previous.get('site_source_revision')!=ui_revision or os.getenv("GITHUB_EVENT_NAME")=="push")
     state = {"title": config["title"], "english_title": config["english_title"], "season": config["season"],
@@ -81,6 +93,7 @@ def main():
              "seed_round": seed_round,
              "status": "running" if jobs else "ready" if active_pairs else "waiting",
              "history_count": previous.get("history_count",0), "cloud_run": os.getenv("GITHUB_RUN_ID"),
+             "failures": deferred,
              "expected_pairs":len(players)*(len(players)-1)//2,"expected_games":len(players)*(len(players)-1)//2*100,
              "worker_source_sha256":digest(ROOT/'arena/worker.py'),
              "site_source_revision":ui_revision,
@@ -88,7 +101,7 @@ def main():
              "notice": "每5分鐘輕量檢查；模型換版只重跑相關配對，每日台灣時間04:00起換共同50個seed、雙座位全輪重賽。沒有變更不重錄。每天SHA內容複核；雲端排隊可能延遲。"}
     write(data / "latest.json", state)
     write(ROOT / "runtime/planned_state.json",state)
-    write(ROOT / "runtime/plan.json", {"jobs": jobs, "protocol": protocol})
+    write(ROOT / "runtime/plan.json", {"jobs": jobs, "protocol": protocol, "deferred_failures": deferred})
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as out: out.write(f"changed={'true' if jobs else 'false'}\npublish={'true' if publish else 'false'}\nseed_round_changed={'true' if seed_round and round_changed else 'false'}\n")
     print(f"Roster: {sum(p['status']=='ready' for p in players)}/{len(players)} ready; {len(jobs)} changed pair(s); ZIP downloads={downloads}; publish={publish}.")

@@ -11,6 +11,7 @@ from highlights import viewing_guide
 import diagnostics
 import mistakes
 import opening
+from failures import failure_record
 
 def main():
     plan = read(ROOT/"runtime/plan.json")
@@ -24,7 +25,8 @@ def main():
                         "standings":previous.get("standings",[]),"protocol":previous.get('protocol',{}),"seed_round":previous.get('seed_round'),
                         "pairs":[{k:v for k,v in p.items() if k not in ("games","videos")} for p in previous["pairs"]]})
     write(ROOT/"site/data/history.json",history);state["history_count"]=len(history)
-    failures = []
+    failures = list(plan.get('deferred_failures', []))
+    old_failures = {f['key']: f for f in previous.get('failures', [])}
     for job in plan["jobs"]:
         temporary = ROOT/"runtime"/job["key"]
         temporary.mkdir(exist_ok=True)
@@ -38,7 +40,14 @@ def main():
                    "-v",f"{ROOT/'runtime/job.json'}:/job.json:ro",
                    "-v",f"{temporary}:/out:rw","osl-worker","--job","/job.json"]
         try:
-            subprocess.run(command,check=True,timeout=1800)
+            # Keep model output in a file, and expose a bounded diagnostic tail.
+            with tempfile.TemporaryFile() as log:
+                result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, timeout=1800)
+                log.seek(0, 2); log.seek(max(0, log.tell() - 16384))
+                tail = log.read().decode('utf-8', errors='replace')
+                print(tail, flush=True)
+                if result.returncode:
+                    raise subprocess.CalledProcessError(result.returncode, command, output=tail)
             raw = read(temporary/"raw.json")
             result = summarize(raw,job,plan["protocol"])
             target = ROOT/"site/data/pairs"/job["key"]
@@ -57,8 +66,7 @@ def main():
             export_csv(target/"results.csv",[result])
             state["pairs"].append(result)
         except Exception as exc:
-            failures.append({"a":job["a"]["id"],"b":job["b"]["id"],"key":job["key"],
-                             "message":f"比賽未完成：{type(exc).__name__}。不以未完成對局判定勝負。請檢查模型可攜性或雲端執行紀錄。"})
+            failures.append(failure_record(job, exc, old_failures.get(job['key'])))
         finally:
             state["queued_pairs"] -= 1
     state["failures"] = failures

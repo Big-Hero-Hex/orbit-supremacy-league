@@ -1,5 +1,5 @@
 """Prove unchanged games/videos are reused; no model loading or matches."""
-import contextlib,io,json,os,sys,tempfile,unittest
+import contextlib,io,json,os,sys,tempfile,unittest,zipfile
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'arena'))
@@ -19,7 +19,12 @@ class IncrementalPlanTests(unittest.TestCase):
             times=iter(['2026-10-22T03:50:00+08:00','2026-10-22T03:55:00+08:00' if rotate=='same' else '2026-10-22T04:00:00+08:00'])
             def draw(config,previous,persisted):
                 return select_round(config,previous,persisted,at=datetime.fromisoformat(next(times)),entropy=lambda:'test')
-            revisions={p['folder']:'r0' for p in players};payload={str(i):f'test-model{i}'.encode() for i in range(4)}
+            def model_bytes(tag):
+                buffer=io.BytesIO()
+                with zipfile.ZipFile(buffer,'w') as z:
+                    z.writestr('data',json.dumps({'fixture':tag}));z.writestr('policy.pth',b'not-executed-test-tensor')
+                return buffer.getvalue()
+            revisions={p['folder']:'r0' for p in players};payload={str(i):model_bytes(i) for i in range(4)}
             def metadata(folder):return [dict(file_id=folder[-1],filename='model.zip',metadata_fingerprint=revisions[folder])]
             def download(file_id,target):Path(target).write_bytes(payload[file_id])
             with patch.object(plan,'ROOT',root),patch.object(plan,'select_round',side_effect=draw),patch.object(plan,'model_metadata',side_effect=metadata),patch.object(plan,'download',side_effect=download) as get,patch.dict(os.environ,{'GITHUB_EVENT_NAME':'workflow_dispatch','GITHUB_OUTPUT':''}):
@@ -29,7 +34,7 @@ class IncrementalPlanTests(unittest.TestCase):
                 write(root/'site/data/latest.json',first)
                 for f in (root/'runtime/models').iterdir():f.unlink()
                 get.reset_mock()
-                if changed:revisions['folder0']='r1';payload['0']=b'changed-test-model'
+                if changed:revisions['folder0']='r1';payload['0']=model_bytes('changed')
                 capture=io.StringIO()
                 with contextlib.redirect_stdout(capture):plan.main()
                 return first,read(root/'runtime/plan.json'),read(root/'runtime/planned_state.json'),get.call_count,capture.getvalue()
