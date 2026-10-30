@@ -74,11 +74,12 @@ try{
  assert.equal(await page.locator('#rankingUpdates').evaluate(e=>e.open),false);
  results.push('History disclosure: closed by default, latest summary visible, keyboard expansion, all model SHA available, collapse supported');
  await page.locator('#rankingChanges button[data-index="0"]').click().catch(()=>{});
- await page.locator('#snapshotSelect').selectOption('0');assert.equal(await page.locator('#snapshotTable tbody tr').count(),15);
+ await page.locator('#snapshotSelect').selectOption('0');assert.equal(await page.locator('.matrix-static').count(),30,'unsaved snapshot: matrix rebuilt from stored matchups');assert.equal(await page.locator('#broadcast .snapshot-blank-note').isVisible(),true);assert.equal(await page.locator('#snapshotTable').count(),0,'no duplicate pairing table');
  assert.equal(await page.locator('#snapshotPrev').isDisabled(),true);
  await page.locator('#snapshotNext').click();assert.equal(await page.locator('#snapshotSelect').inputValue(),'1');
  assert.ok((await page.locator('#snapshotMeta').textContent()).includes('2026'));
- results.push('Snapshot matchups: select/prev/next switch historical snapshots, 15 pair rows each');
+ await page.locator('#snapshotSelect').selectOption('2');assert.equal(await page.locator('.matrix-cell').count(),30,'latest snapshot restores the live matrix');
+ results.push('Snapshot selection: select/prev/next switch snapshots; unsaved ones blank the sections below the matrix; latest restores');
  await page.selectOption('#rankingMetric','points');assert.equal(await page.locator('#rankingHistoryTable tbody tr').count(),18);
  await page.locator('#ranking-history').screenshot({path:'runtime/ui-check/ranking-fixture-only.png'});
  await page.setViewportSize({width:390,height:844});
