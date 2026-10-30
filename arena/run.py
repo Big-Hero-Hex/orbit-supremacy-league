@@ -12,7 +12,7 @@ import diagnostics
 import mistakes
 import opening
 from failures import failure_record
-from starred import effective_starred, load_starred, mark_replays, pair_keys, save_standings
+from starred import backfill_standings, effective_starred, load_starred, mark_replays, pair_keys, save_standings
 
 def main():
     plan = read(ROOT/"runtime/plan.json")
@@ -99,6 +99,8 @@ def main():
     manual=load_starred(ROOT/'starred_snapshots.json',ROOT/'starred')
     starred=effective_starred(state['ranking_history'],manual)
     save_standings(state['ranking_history'],starred,state,ROOT/'site/data/starred')
+    rebuilt=backfill_standings(state['ranking_history'],starred,ROOT/'site/data/pairs',ROOT/'site/data/starred',standings)
+    if rebuilt:print(f'Rebuilt frozen standings for {len(rebuilt)} kept snapshot(s) from retained pair results.')
     mark_replays(state['ranking_history'],starred,ROOT/'site/data/pairs',ROOT/'site/data/starred',manual)
     write(ROOT/'site/data/ranking_history.json',state['ranking_history'])
     export_history(ROOT/'site/data',state['ranking_history'])
