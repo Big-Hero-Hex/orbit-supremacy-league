@@ -1,7 +1,7 @@
 import json,sys,tempfile,unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'arena'))
-from starred import effective_starred,load_starred,mark_replays,pair_keys,save_standings
+from starred import effective_starred,load_starred,mark_replays,pair_keys,save_standings,starred_revision
 
 class StarredTests(unittest.TestCase):
     def test_load_caps_at_two_dedupes_and_tolerates_bad_files(self):
@@ -26,4 +26,19 @@ class StarredTests(unittest.TestCase):
             self.assertEqual(effective_starred(entries,['b']),['b'])
             (Path(t)/'pa'/'result.json').unlink();mark_replays(entries,['a'],t,sd)
             self.assertFalse(entries[0]['replay_available'])
+    def test_star_files_newest_first_and_ignore_junk(self):
+        with tempfile.TemporaryDirectory() as t:
+            d=Path(t)/'starred';d.mkdir()
+            (d/'aaaaaaaa.json').write_text(json.dumps({'starred_at':'2026-10-01T00:00:00Z'}))
+            (d/'bbbbbbbb.json').write_text(json.dumps({'starred_at':'2026-10-02T00:00:00Z'}))
+            (d/'README.txt').write_text('x');(d/'not-a-key.json').write_text('{}');(d/'cccccccc.json').write_text('garbage')
+            legacy=Path(t)/'s.json';legacy.write_text(json.dumps({'snapshots':['dddddddd']}))
+            self.assertEqual(load_starred(legacy,d),['bbbbbbbb','aaaaaaaa'])
+            self.assertEqual(load_starred(legacy,Path(t)/'nope'),['dddddddd'])
+    def test_revision_changes_with_star_list(self):
+        self.assertNotEqual(starred_revision(['a']),starred_revision(['a','b']));self.assertEqual(starred_revision([]),starred_revision([]))
+    def test_manual_flag(self):
+        e=[dict(key='a',pairs=[]),dict(key='b',pairs=[])]
+        with tempfile.TemporaryDirectory() as t:mark_replays(e,['a'],t,t,['a'])
+        self.assertEqual([x['manual_starred'] for x in e],[True,False])
 if __name__=='__main__':unittest.main()
