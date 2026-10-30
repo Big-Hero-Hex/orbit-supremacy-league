@@ -56,7 +56,7 @@ def save_standings(entries, starred, state, folder):
     folder = Path(folder)
     if entries and state.get('standings'):
         folder.mkdir(parents=True, exist_ok=True)
-        (folder / (entries[-1]['key'] + '.json')).write_text(json.dumps({'players': state['players'], 'standings': state['standings']}, ensure_ascii=False), encoding='utf-8')
+        (folder / (entries[-1]['key'] + '.json')).write_text(json.dumps({'players': state['players'], 'standings': state['standings'], 'weaknesses': state.get('weaknesses')}, ensure_ascii=False), encoding='utf-8')
     keep = set(starred) | ({entries[-1]['key']} if entries else set())
     if folder.is_dir():
         for old in folder.glob('*.json'):
