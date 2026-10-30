@@ -1,5 +1,5 @@
 import {setupPairNavigation} from './pair-navigation.js';
-import {renderRankingHistory} from './ranking-history.js?v=snapshot5';
+import {renderRankingHistory} from './ranking-history.js?v=snapshot6';
 import {renderSeedRound} from './seed-round.js?v=seedround1';
 import {cloudPulse} from './cloud-pulse.js?v=model-readiness1';
 import {renderOpening,openingLine,anySilentLoss} from './opening.js?v=diag3';
@@ -28,6 +28,7 @@ async function refresh(){
  finally{$('refresh').disabled=false;}
 }
 function renderAll(oldKey){
+ if(!viewing){
  $('cloudState').textContent=({complete:'全輪戰績已就緒',running:'雲端比賽進行中',partial:'部分賽事已完成',waiting:'競技場就緒 · 等待模型'})[data.status]??'讀取雲端狀態';
  $('updated').textContent=`最後檢查 ${date(data.checked_at)} · 已發布 ${date(data.updated_at)}`;
  $('totalGames').textContent=String(data.total_games??0).padStart(3,'0');
@@ -36,23 +37,33 @@ function renderAll(oldKey){
  $('cloudLink').href=`https://github.com/${data.repository}/actions/workflows/league.yml`;
  $('driveRoot').href=`https://drive.google.com/drive/folders/${data.drive_folder}`;
  $('notice').textContent=(data.failures?.length?`${data.failures.length}組配對未完成，沒有直接判輸。請查看雲端賽程。 `:'')+'比賽、推論與錄影全在GitHub雲端執行。關機不影響；本頁只顯示已發布結果。';
- renderStandings();renderMatrix();renderModels();renderHighlights();
+ renderStandings();
+ }
+ renderMatrix();renderModels();renderHighlights();
  const keep=data.pairs.find(p=>p.key===oldKey);if(pendingLink&&(pendingLink=false,openFromHash())){renderTabs();}else if(keep){pair=keep;renderTabs();renderGames();renderStats();}else if(data.pairs.length)choosePair(data.pairs[0].key);else{pair=null;renderTabs();renderStats();}
 }
-async function viewSnapshot(point){
- const banner=$('snapshotBanner');
+const blankSections=['broadcast','intelligence','versions'];
+function setBlank(on,text){for(const id of blankSections){const section=$(id);if(!section)continue;let note=section.querySelector(':scope>.snapshot-blank-note');
+  for(const el of [...section.querySelectorAll(':scope>.section-title>:not(:first-child)'),...section.children]){if(el.classList.contains('section-title')||el===note)continue;if(on){el.dataset.wasHidden=el.hidden?'1':'';el.hidden=true;}else if('wasHidden' in el.dataset){el.hidden=el.dataset.wasHidden==='1';delete el.dataset.wasHidden;}}
+  if(on){if(!note){note=document.createElement('p');note.className='snapshot-blank-note empty';section.append(note);}note.textContent=text;note.hidden=false;}else if(note)note.hidden=true;}}
+function matrixFromMatchups(point){const people=point.players;if(!point.matchups?.length){node('matrixTable','<p class="empty">此快照未記錄對戰明細。</p>');return;}
+ node('matrixTable',`<table><thead><tr><th>列選手勝率 ↓</th>${people.map(p=>`<th>${esc(p.name)}</th>`).join('')}</tr></thead><tbody>${people.map(a=>`<tr><th>${esc(a.name)}</th>${people.map(b=>{if(a.id===b.id)return '<td class="faded">／</td>';const m=point.matchups.find(m=>[m.a,m.b].includes(a.id)&&[m.a,m.b].includes(b.id));if(!m)return '<td class="faded"></td>';const s=m.a===a.id?m.a_stats:m.b_stats;return Number.isFinite(s?.wins)?`<td class="matrix-static"><b>${pct(s.win_rate)}</b><small>${s.wins} / ${s.losses} / ${s.draws}</small></td>`:'<td class="faded"></td>';}).join('')}</tr>`).join('')}</tbody></table>`);}
+function showBanner(point,text){const banner=$('snapshotBanner');banner.hidden=false;banner.querySelector('span').textContent=`正在檢視 ${date(point.recorded_at)} 的歷史快照${point.starred?'（★ 星號保存）':''}：${text}`;}
+function viewBlank(point,reason){viewing=point;setBlank(true,reason);matrixFromMatchups(point);showBanner(point,'此快照沒有保存重播與統計，下方區塊留白；只有當時的對戰勝負表。');}
+async function viewSnapshot(point,scroll=false){
  try{
   const pairs=await Promise.all(point.pairs.map(p=>fetch(`data/pairs/${p.key}/result.json`,{cache:'no-cache'}).then(r=>{if(!r.ok)throw Error(r.status);return r.json();})));
   const frozen=await fetch(`data/starred/${point.key}.json`,{cache:'no-cache'}).then(r=>{if(!r.ok)throw Error(r.status);return r.json();});
-  viewing=point;
+  viewing=point;setBlank(false);
   data={repository:liveData.repository,drive_folder:liveData.drive_folder,checked_at:liveData.checked_at,seed_round:liveData.seed_round,status:point.complete_round_robin?'complete':'partial',
    players:frozen.players,standings:frozen.standings,weaknesses:frozen.weaknesses,pairs,total_games:point.total_games,complete_round_robin:point.complete_round_robin,failures:[],updated_at:point.recorded_at};
-  renderAll();
-  banner.hidden=false;banner.querySelector('span').textContent=`正在檢視 ${date(point.recorded_at)} 的歷史快照${point.starred?'（★ 星號保存）':''}：只顯示當時記錄的資料，沒有記錄的項目（影片、診斷等）會留白。`;
-  document.getElementById('broadcast')?.scrollIntoView();
- }catch(error){viewing=null;console.error(error);banner.hidden=false;banner.querySelector('span').textContent='這個快照的重播已被清理或無法讀取，仍顯示目前版本。';}
+  pair=null;renderAll();
+  showBanner(point,'下方的對戰、重播、統計為當時保存的資料；沒有記錄的項目會留白。');
+  if(scroll)document.getElementById('broadcast')?.scrollIntoView();
+ }catch(error){console.error(error);viewBlank(point,'此快照的重播與統計已無法讀取。');}
 }
-function leaveSnapshot(){viewing=null;$('snapshotBanner').hidden=true;cloudFetched=0;refresh();}
+function selectSnapshot({point,last}){if(last)leaveSnapshot();else if(point.replay_available)viewSnapshot(point);else viewBlank(point,'此快照沒有保存重播與統計，因此這裡留白。系統自動保留「上一筆」，另可手動星號1個。');}
+function leaveSnapshot(){if(!viewing)return;viewing=null;setBlank(false);$('snapshotBanner').hidden=true;cloudFetched=0;refresh();}
 function renderStandings(){
  const rows=data.standings??[];
  node('leaderboard',rows.length?rows.map(r=>{const p=player(r.id);return `<article class="leader-row" style="--team:${esc(p.color)}"><div class="rank">${String(r.rank).padStart(2,'0')}</div><div><span class="player-code">${esc(p.code)}</span><span class="player-name">${esc(p.name)}</span></div><div><span class="label">每場積分率</span><b class="number">${pct(r.score_rate)}</b><div class="bar"><i style="width:${r.score_rate*100}%"></i></div></div><div><span class="label">勝 / 敗 / 和</span><b>${r.wins} / ${r.losses} / ${r.draws}</b></div><div><span class="label">勝率</span><b class="number">${pct(r.win_rate)}</b></div><div><span class="label">場次</span><b>${r.games}</b></div></article>`;}).join(''):'<div class="panel empty">群雄列陣，鋒芒待試。上傳模型後，雲端將自動排入對戰；目前沒有真實比賽成績。</div>');
@@ -125,7 +136,7 @@ function blankNotes(){if(!viewing)return;for(const e of document.querySelectorAl
 function renderWeaknesses(){const pairScope=$('statsScope').value==='pair'&&pair,rows=pairScope?[pair.a,pair.b].map(id=>({id,diag:pair.diagnostics?.[id],found:pair.weaknesses?.[id]})):(data.standings??[]).map(r=>({id:r.id,diag:r.diagnostics,found:data.weaknesses?.[r.id]}));const d=renderDiagnostics(rows,name,$('weaknessPlayer').value);node('diagSkills',d.skills);node('weaknessPlayer',d.options);node('weaknessList',d.weakness);$('weaknessPlayer').hidden=!d.selected;node('mistakeTable',renderMistakes(pairScope?[pair.a,pair.b].map(id=>({id,m:pair.mistakes?.[id]})):(data.standings??[]).map(r=>({id:r.id,m:r.mistakes})),name));blankNotes();}
 function renderModels(){node('modelRegistry',`<table><thead><tr><th>選手</th><th>目前檔名</th><th>SHA256（完整可選取複製）</th><th>參數量</th><th>狀態</th></tr></thead><tbody>${data.players.map(p=>{const info=data.pairs.find(q=>q.model_info?.[p.id])?.model_info?.[p.id];return `<tr><td>${esc(p.name)}</td><td>${esc(p.filename??(viewing?'':'尚未上傳'))}</td><td><code>${esc(p.sha256??'—')}</code></td><td>${p.kind==='official_rulebot'?'規則程式 · 非神經網路':info?num(info.parameters):viewing?'':'待雲端載入'}</td><td>${esc(p.message??p.status)}</td></tr>`;}).join('')}</tbody></table>`);}
 async function history(){try{const r=await fetch('data/history.json',{cache:'no-cache'}),rows=await r.json();node('historyList',rows.length?rows.slice().reverse().map(h=>`<div><p>${date(h.recorded_at)}</p><table><tr><th>名次</th><th>選手</th><th>勝/敗/和</th><th>積分率</th><th>版本SHA</th></tr>${h.standings.map(s=>`<tr><td>${s.rank}</td><td>${esc(h.players.find(p=>p.id===s.id)?.name)}</td><td>${s.wins}/${s.losses}/${s.draws}</td><td>${pct(s.score_rate)}</td><td><code>${esc(h.players.find(p=>p.id===s.id)?.sha256?.slice(0,16))}</code></td></tr>`).join('')}</table></div>`).join(''):'<p>尚無歷史換版成績。第一次完成對戰後，換版時會保留。</p>');}catch{node('historyList','<p>歷史成績暫時無法讀取。</p>');}}
-document.addEventListener('view-snapshot',e=>viewSnapshot(e.detail));$('snapshotBack').onclick=leaveSnapshot;
+document.addEventListener('view-snapshot',e=>viewSnapshot(e.detail,true));document.addEventListener('snapshot-selected',e=>selectSnapshot(e.detail));$('snapshotBack').onclick=leaveSnapshot;
 $('refresh').onclick=()=>{cloudFetched=0;refresh();};for(const id of ['seatFilter','resultFilter','seedFilter','sortFilter','watchSet'])$(id).addEventListener(id==='seedFilter'?'input':'change',()=>{if(id==='seedFilter'&&$('seedFilter').value)$('watchSet').value='all';renderGames();});$('statsScope').onchange=renderStats;$('weaknessPlayer').onchange=renderWeaknesses;
 window.addEventListener('hashchange',openFromHash);
 document.addEventListener('click',event=>{const link=event.target.closest('a[href^="#game="]');if(link){event.preventDefault();window.history.replaceState(null,'',link.getAttribute('href'));openFromHash();return;}const focus=event.target.closest('[data-highlight-game]');if(focus){choosePair(focus.dataset.highlightPair,focus.dataset.highlightGame);$('arena').scrollIntoView({behavior:'smooth',block:'center'});}const p=event.target.closest('[data-pair]');if(p){choosePair(p.dataset.pair);if(p.tagName==='TD')$('broadcast').scrollIntoView({behavior:'smooth'});}const g=event.target.closest('[data-game]');if(g)chooseGame(g.dataset.game);const t=event.target.closest('[data-tick]');if(t&&recording){playing=false;draw(Math.max(0,Number(t.dataset.tick)/50-.3));$('play').textContent='▶';}});
