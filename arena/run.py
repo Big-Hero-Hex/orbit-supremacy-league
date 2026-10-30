@@ -12,7 +12,7 @@ import diagnostics
 import mistakes
 import opening
 from failures import failure_record
-from starred import load_starred, mark_replays, pair_keys, save_standings
+from starred import effective_starred, load_starred, mark_replays, pair_keys, save_standings
 
 def main():
     plan = read(ROOT/"runtime/plan.json")
@@ -96,7 +96,7 @@ def main():
     state["updated_at"] = now()
     state["next_scheduled_check"] = next_check()
     state['ranking_history']=update_history(previous,history,state)
-    starred=load_starred(ROOT/'starred_snapshots.json')
+    starred=effective_starred(state['ranking_history'],load_starred(ROOT/'starred_snapshots.json'))
     save_standings(state['ranking_history'],starred,state,ROOT/'site/data/starred')
     mark_replays(state['ranking_history'],starred,ROOT/'site/data/pairs',ROOT/'site/data/starred')
     write(ROOT/'site/data/ranking_history.json',state['ranking_history'])

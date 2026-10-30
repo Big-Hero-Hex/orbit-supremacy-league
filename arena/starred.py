@@ -17,16 +17,30 @@ def load_starred(path):
     return unique[:MAX_STARRED]
 
 
+def effective_starred(entries, manual):
+    """The previous snapshot is always kept automatically; the manual list fills what is left of the two slots."""
+    keys = []
+    if len(entries) > 1 and entries[-2].get('key'):keys.append(entries[-2]['key'])
+    for key in manual:
+        if key not in keys:keys.append(key)
+    return keys[:MAX_STARRED]
+
+
 def pair_keys(entries, starred):
     return {p['key'] for e in entries if e.get('key') in starred for p in e.get('pairs', []) if p.get('key')}
 
 
 def save_standings(entries, starred, state, folder):
-    """The slim snapshot lacks per-weapon stats, so a starred latest snapshot also freezes its full standings."""
-    if entries and entries[-1].get('key') in starred and state.get('standings'):
-        target = Path(folder) / (entries[-1]['key'] + '.json')
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps({'players': state['players'], 'standings': state['standings']}, ensure_ascii=False), encoding='utf-8')
+    """The slim snapshot lacks per-weapon stats, so the latest snapshot always freezes its full standings
+    (it becomes the automatic previous one next time); files no longer retained are removed."""
+    folder = Path(folder)
+    if entries and state.get('standings'):
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / (entries[-1]['key'] + '.json')).write_text(json.dumps({'players': state['players'], 'standings': state['standings']}, ensure_ascii=False), encoding='utf-8')
+    keep = set(starred) | ({entries[-1]['key']} if entries else set())
+    if folder.is_dir():
+        for old in folder.glob('*.json'):
+            if old.stem not in keep:old.unlink()
 
 
 def mark_replays(entries, starred, pairs_dir, starred_dir):
@@ -34,6 +48,7 @@ def mark_replays(entries, starred, pairs_dir, starred_dir):
     for index, point in enumerate(entries):
         last = index == len(entries) - 1
         point['starred'] = point.get('key') in starred
+        point['auto_starred'] = bool(index == len(entries) - 2)
         keep = last or (point['starred'] and (Path(starred_dir) / (point['key'] + '.json')).is_file())
         point['replay_available'] = bool(keep and point.get('pairs') and all((Path(pairs_dir) / p['key'] / 'result.json').is_file() for p in point['pairs']))
     return entries
