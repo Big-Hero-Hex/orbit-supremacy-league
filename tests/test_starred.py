@@ -1,7 +1,7 @@
 import json,sys,tempfile,unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'arena'))
-from starred import effective_starred,load_starred,mark_replays,pair_keys,save_standings,starred_revision
+from starred import backfill_standings,effective_starred,load_starred,mark_replays,pair_keys,save_standings,starred_revision
 
 class StarredTests(unittest.TestCase):
     def test_load_caps_at_two_dedupes_and_tolerates_bad_files(self):
@@ -41,4 +41,17 @@ class StarredTests(unittest.TestCase):
         e=[dict(key='a',pairs=[]),dict(key='b',pairs=[])]
         with tempfile.TemporaryDirectory() as t:mark_replays(e,['a'],t,t,['a'])
         self.assertEqual([x['manual_starred'] for x in e],[True,False])
+    def test_backfill_rebuilds_missing_standings_only_when_all_pairs_exist(self):
+        entries=[dict(key='a',players=[dict(id='p')],pairs=[dict(key='x'),dict(key='y')]),dict(key='b',players=[],pairs=[])]
+        with tempfile.TemporaryDirectory() as t:
+            pd=Path(t)/'pairs';sd=Path(t)/'starred'
+            (pd/'x').mkdir(parents=True);(pd/'x'/'result.json').write_text(json.dumps({'k':1}))
+            built=lambda players,pairs:[dict(id=r['id'],n=len(pairs)) for r in players]
+            self.assertEqual(backfill_standings(entries,['a'],pd,sd,built),[],'a missing pair result means nothing is invented')
+            (pd/'y').mkdir();(pd/'y'/'result.json').write_text(json.dumps({'k':2}))
+            self.assertEqual(backfill_standings(entries,['b'],pd,sd,built),[],'only kept snapshots are rebuilt')
+            self.assertEqual(backfill_standings(entries,['a'],pd,sd,built),['a'])
+            self.assertEqual(json.loads((sd/'a.json').read_text())['standings'],[dict(id='p',n=2)])
+            self.assertEqual(backfill_standings(entries,['a'],pd,sd,built),[],'existing file is left untouched')
+            mark_replays(entries,['a'],pd,sd);self.assertTrue(entries[0]['replay_available'])
 if __name__=='__main__':unittest.main()

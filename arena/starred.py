@@ -63,6 +63,30 @@ def save_standings(entries, starred, state, folder):
             if old.stem not in keep:old.unlink()
 
 
+def backfill_standings(entries, starred, pairs_dir, starred_dir, build):
+    """Rebuild a kept snapshot's full standings from its retained pair results.
+
+    A snapshot created before its standings were being frozen (for example by an older run that was still in
+    progress) keeps all its recordings but has no standings file; without one it cannot be shown. Returns the
+    keys that were rebuilt. Nothing is invented: a snapshot with any pair result missing is left alone."""
+    done = []
+    for point in entries[:-1]:
+        key = point.get('key')
+        target = Path(starred_dir) / (key + '.json')
+        if key not in starred or target.is_file() or not point.get('pairs'):continue
+        files = [Path(pairs_dir) / p['key'] / 'result.json' for p in point['pairs']]
+        if not all(f.is_file() for f in files):continue
+        try:
+            pairs = [json.loads(f.read_text(encoding='utf-8')) for f in files]
+            standings = build([{'id': r['id']} for r in point['players']], pairs)
+        except (OSError, ValueError, KeyError):
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps({'players': point['players'], 'standings': standings, 'weaknesses': None}, ensure_ascii=False), encoding='utf-8')
+        done.append(key)
+    return done
+
+
 def mark_replays(entries, starred, pairs_dir, starred_dir, manual=()):
     """Flag each snapshot by whether its full recordings are still published (latest, or starred and intact)."""
     for index, point in enumerate(entries):
