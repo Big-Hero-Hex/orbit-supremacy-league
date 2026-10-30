@@ -5,6 +5,16 @@ import json
 from pathlib import Path
 
 
+def matchup(pair):
+    """Per-pair W/L/D as published then; kept out of the snapshot key so adding it never creates a new point."""
+    stats=pair.get('stats') or {}
+    out={k:pair.get(k) for k in ('key','a','b')}
+    for side in ('a','b'):
+        s=stats.get(pair.get(side)) or {}
+        out[side+'_stats']={k:s.get(k) for k in ('games','wins','losses','draws','win_rate')}
+    return out
+
+
 def snapshot(state, recorded_at=None):
     if not state.get('standings'):
         return None
@@ -15,11 +25,12 @@ def snapshot(state, recorded_at=None):
         rows.append({**{k:row.get(k) for k in ('id','rank','games','wins','losses','draws','points','score_rate','win_rate','opponents')},
                      **{k:person.get(k) for k in ('name','code','color','sha256','kind')}})
     pairs=sorted(({k:p.get(k) for k in ('key','a','b','hashes')} for p in state.get('pairs',[])),key=lambda p:p['key'])
+    matchups=[matchup(p) for p in sorted(state.get('pairs',[]),key=lambda p:p['key'])]
     protocol=hashlib.sha256(json.dumps(state.get('protocol',{}),sort_keys=True,separators=(',',':')).encode()).hexdigest()[:16]
     competitive={'players':[{k:r[k] for k in ('id','sha256','rank','games','wins','draws','points')} for r in sorted(rows,key=lambda r:r['id'])],
                  'pairs':pairs,'protocol':protocol}
     key=hashlib.sha256(json.dumps(competitive,sort_keys=True,separators=(',',':')).encode()).hexdigest()[:24]
-    return dict(key=key,recorded_at=recorded_at or state.get('recorded_at') or state.get('updated_at'),players=rows,pairs=pairs,
+    return dict(key=key,recorded_at=recorded_at or state.get('recorded_at') or state.get('updated_at'),players=rows,pairs=pairs,matchups=matchups,
                 total_games=state.get('total_games') or sum(r['games'] for r in rows)//2,
                 complete_round_robin=bool(state.get('complete_round_robin',len(pairs)==len(people)*(len(people)-1)//2)),protocol=protocol,
                 seed_round={k:state['seed_round'].get(k) for k in ('id','starts_at','next_rotation_at')} if state.get('seed_round') else None,
@@ -74,7 +85,7 @@ def update_history(previous, archived, state):
         elif point:
             # Metadata migration is not a new score point or a model update.
             entries[-1]=dict(entries[-1])
-            for field in ('seed_round','rules_protocol'):
+            for field in ('seed_round','rules_protocol','matchups'):
                 if point.get(field) and not entries[-1].get(field):entries[-1][field]=point[field]
     if not entries:
         for old in archived:add(snapshot(old))

@@ -73,6 +73,12 @@ try{
  await page.locator('#rankingUpdates>summary').click();
  assert.equal(await page.locator('#rankingUpdates').evaluate(e=>e.open),false);
  results.push('History disclosure: closed by default, latest summary visible, keyboard expansion, all model SHA available, collapse supported');
+ await page.locator('#rankingChanges button[data-index="0"]').click().catch(()=>{});
+ await page.locator('#snapshotSelect').selectOption('0');assert.equal(await page.locator('#snapshotTable tbody tr').count(),15);
+ assert.equal(await page.locator('#snapshotPrev').isDisabled(),true);
+ await page.locator('#snapshotNext').click();assert.equal(await page.locator('#snapshotSelect').inputValue(),'1');
+ assert.ok((await page.locator('#snapshotMeta').textContent()).includes('2026'));
+ results.push('Snapshot matchups: select/prev/next switch historical snapshots, 15 pair rows each');
  await page.selectOption('#rankingMetric','points');assert.equal(await page.locator('#rankingHistoryTable tbody tr').count(),18);
  await page.locator('#ranking-history').screenshot({path:'runtime/ui-check/ranking-fixture-only.png'});
  await page.setViewportSize({width:390,height:844});

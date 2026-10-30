@@ -11,6 +11,16 @@ class RankingHistoryTests(unittest.TestCase):
     def test_first_real_result_only_no_fabricated_predecessor(self):
         s=self.state();h=update_history({},[],s);self.assertEqual(len(h),1);self.assertEqual(h[0]['players'][0]['score_rate'],.81)
         self.assertEqual(update_history({},[],dict(players=[],standings=[])),[])
+    def test_matchups_recorded_without_changing_snapshot_key(self):
+        s=self.state();bare=snapshot(s)
+        s['pairs'][0]['stats']={'a':dict(games=100,wins=60,losses=30,draws=10,win_rate=.6),'b':dict(games=100,wins=30,losses=60,draws=10,win_rate=.3)}
+        point=snapshot(s);self.assertEqual(point['key'],bare['key'])
+        m=point['matchups'][0];self.assertEqual((m['key'],m['a_stats']['wins'],m['b_stats']['losses']),('ab',60,60))
+        self.assertIsNone(bare['matchups'][0]['a_stats']['wins'])
+    def test_legacy_last_point_gains_matchups_without_new_point(self):
+        s=self.state();old=snapshot(s);old.pop('matchups');s['ranking_history']=[old]
+        s['pairs'][0]['stats']={'a':dict(games=100,wins=60,losses=30,draws=10,win_rate=.6)}
+        h=update_history(s,[],s);self.assertEqual(len(h),1);self.assertEqual(h[0]['matchups'][0]['a_stats']['wins'],60)
     def test_time_only_publish_is_not_a_new_point(self):
         s=self.state();s['ranking_history']=update_history({},[],s);new=copy.deepcopy(s);new['updated_at']='2026-10-21T12:00:00Z'
         self.assertEqual(len(update_history(s,[],new)),1)
