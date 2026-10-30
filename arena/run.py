@@ -12,6 +12,7 @@ import diagnostics
 import mistakes
 import opening
 from failures import failure_record
+from starred import load_starred, mark_replays, pair_keys, save_standings
 
 def main():
     plan = read(ROOT/"runtime/plan.json")
@@ -95,6 +96,9 @@ def main():
     state["updated_at"] = now()
     state["next_scheduled_check"] = next_check()
     state['ranking_history']=update_history(previous,history,state)
+    starred=load_starred(ROOT/'starred_snapshots.json')
+    save_standings(state['ranking_history'],starred,state,ROOT/'site/data/starred')
+    mark_replays(state['ranking_history'],starred,ROOT/'site/data/pairs',ROOT/'site/data/starred')
     write(ROOT/'site/data/ranking_history.json',state['ranking_history'])
     export_history(ROOT/'site/data',state['ranking_history'])
     export_csv(ROOT/"site/data/results.csv",state["pairs"])
@@ -103,7 +107,7 @@ def main():
     write(ROOT/"site/data/latest.json",state)
     # Current broadcast only, with all historical tables kept in history.json.
     # Old binaries are not silently accumulated in Git history or Actions cache.
-    keep = {p["key"] for p in state["pairs"]}
+    keep = {p["key"] for p in state["pairs"]} | pair_keys(state['ranking_history'],starred)
     base = ROOT/"site/data/pairs"
     if base.exists():
         for path in base.iterdir():

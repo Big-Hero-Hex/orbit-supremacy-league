@@ -12,18 +12,21 @@ export function renderRankingHistory(state) {
  document.getElementById('rankingUpdateCount').textContent=`· ${entries.length} 筆`;
  document.getElementById('rankingLatestUpdate').textContent=entries.length?`最新：${changes(entries.at(-1))}`:'尚無紀錄';
  events.innerHTML=entries.map((point,i)=>`<button type="button" data-index="${i}" aria-pressed="false"><small>第 ${i+1} 次 · ${escape(when(point.recorded_at))}</small><strong>${escape(changes(point))}</strong></button>`).reverse().join('');
- const snapSelect=document.getElementById('snapshotSelect'),snapTable=document.getElementById('snapshotTable'),snapMeta=document.getElementById('snapshotMeta'),snapPrev=document.getElementById('snapshotPrev'),snapNext=document.getElementById('snapshotNext');
+ const snapSelect=document.getElementById('snapshotSelect'),snapTable=document.getElementById('snapshotTable'),snapMeta=document.getElementById('snapshotMeta'),snapReplay=document.getElementById('snapshotReplay'),snapPrev=document.getElementById('snapshotPrev'),snapNext=document.getElementById('snapshotNext');
  const pctText=n=>Number.isFinite(n)?`${(n*100).toFixed(1)}%`:'—';
  snapSelect.innerHTML=entries.map((point,i)=>`<option value="${i}">第 ${i+1} 次 · ${escape(when(point.recorded_at))}</option>`).reverse().join('');
  function showSnapshot(index) {
   const point=entries[index];
-  if(!point){snapTable.innerHTML='<p class="empty">尚無歷史快照。</p>';snapMeta.textContent='';snapPrev.disabled=snapNext.disabled=true;return;}
+  if(!point){snapTable.innerHTML='<p class="empty">尚無歷史快照。</p>';snapMeta.innerHTML='';snapReplay.innerHTML='';snapPrev.disabled=snapNext.disabled=true;return;}
   snapSelect.value=String(index);snapPrev.disabled=index===0;snapNext.disabled=index===entries.length-1;
   const name=id=>point.players.find(r=>r.id===id)?.name??people.find(p=>p.id===id)?.name??id;
-  snapMeta.textContent=`${when(point.recorded_at)} · ${point.total_games??0} 場 · ${point.complete_round_robin?'完整全輪':'暫列／部分配對'} · ${changes(point)}`;
+  snapMeta.innerHTML=`${escape(when(point.recorded_at))} · ${point.total_games??0} 場 · ${point.complete_round_robin?'完整全輪':'暫列／部分配對'} · ${escape(changes(point))} · 快照代碼 <code>${escape(point.key)}</code>`;
+  const last=index===entries.length-1;
+  snapReplay.innerHTML=last?'<span class="tag green">目前版本 · 重播在上方對戰區</span>':point.replay_available?`<span class="tag green">${point.starred?'★ ':''}完整重播已保存</span> <button type="button" class="button small" data-view="${index}">查看此快照的重播</button>`:'<span class="tag">此快照的重播已清理</span> <small class="muted">最多2個星號快照會永久保留完整重播，其餘只留成績。</small>';
   if(!point.matchups?.length){snapTable.innerHTML='<p class="empty">此快照建立時尚未記錄逐配對勝負，不補造數字。排名與積分仍可在上方走勢與表格查看。</p>';return;}
   snapTable.innerHTML=`<table><thead><tr><th>對戰配對</th><th>勝 / 敗 / 和（左方視角）</th><th>左方勝率</th><th>右方勝率</th><th>場數</th></tr></thead><tbody>${point.matchups.map(m=>`<tr><td>${escape(name(m.a))} <span class="faded">vs</span> ${escape(name(m.b))}</td><td>${m.a_stats?.wins??'—'} / ${m.a_stats?.losses??'—'} / ${m.a_stats?.draws??'—'}</td><td>${pctText(m.a_stats?.win_rate)}</td><td>${pctText(m.b_stats?.win_rate)}</td><td>${m.a_stats?.games??'—'}</td></tr>`).join('')}</tbody></table>`;
  }
+ snapReplay.onclick=e=>{const b=e.target.closest('button[data-view]');if(b)document.dispatchEvent(new CustomEvent('view-snapshot',{detail:entries[Number(b.dataset.view)]}));};
  snapSelect.onchange=()=>showSnapshot(Number(snapSelect.value));
  snapPrev.onclick=()=>showSnapshot(Number(snapSelect.value)-1);
  snapNext.onclick=()=>showSnapshot(Number(snapSelect.value)+1);
