@@ -3,6 +3,7 @@ import itertools
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+from starred import load_starred, starred_revision
 from common import ROOT, digest, now, pair_key, read, seeds, write,engine_revision,site_revision
 from drive import model_metadata, download
 from participants import builtin_identity
@@ -85,7 +86,8 @@ def main():
     def comparable(ps):
         return [{k:p.get(k) for k in ("id","status","sha256","filename","message","metadata_fingerprint","content_verified_at","archive_validation")} for p in ps]
     ui_revision=site_revision(ROOT)
-    publish=bool(jobs or comparable(players)!=comparable(previous.get("players",[])) or previous.get("protocol")!=protocol or previous.get('seed_round')!=seed_round or previous.get('site_source_revision')!=ui_revision or os.getenv("GITHUB_EVENT_NAME")=="push")
+    star_revision=starred_revision(load_starred(ROOT/'starred_snapshots.json',ROOT/'starred'))
+    publish=bool(jobs or comparable(players)!=comparable(previous.get("players",[])) or previous.get("protocol")!=protocol or previous.get('seed_round')!=seed_round or previous.get('site_source_revision')!=ui_revision or previous.get('starred_revision')!=star_revision or os.getenv("GITHUB_EVENT_NAME")=="push")
     state = {"title": config["title"], "english_title": config["english_title"], "season": config["season"],
              "repository": config["repository"], "drive_folder": config["drive_folder"],
              "updated_at": now(), "checked_at": now(), "players": players, "pairs": active_pairs,
@@ -96,7 +98,7 @@ def main():
              "failures": deferred,
              "expected_pairs":len(players)*(len(players)-1)//2,"expected_games":len(players)*(len(players)-1)//2*100,
              "worker_source_sha256":digest(ROOT/'arena/worker.py'),
-             "site_source_revision":ui_revision,
+             "site_source_revision":ui_revision,"starred_revision":star_revision,
              "controller_contracts":{"model":"native SB3 policy.predict, deterministic, raw84, CPU one thread","official_rulebot":"老師原版rusher_bot_action/sniper_bot_action，直接使用raw84，僅適配predict介面；非神經模型"},
              "notice": "每5分鐘輕量檢查；模型換版只重跑相關配對，每日台灣時間04:00起換共同50個seed、雙座位全輪重賽。沒有變更不重錄。每天SHA內容複核；雲端排隊可能延遲。"}
     write(data / "latest.json", state)

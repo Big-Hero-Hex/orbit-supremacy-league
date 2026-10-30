@@ -28,12 +28,14 @@ export function renderRankingHistory(state) {
   snapSelect.value=String(index);snapPrev.disabled=index===0;snapNext.disabled=index===entries.length-1;
   const name=id=>point.players.find(r=>r.id===id)?.name??people.find(p=>p.id===id)?.name??id;
   snapMeta.innerHTML=`${escape(when(point.recorded_at))} · ${point.total_games??0} 場 · ${point.complete_round_robin?'完整全輪':'暫列／部分配對'} · ${escape(changes(point))} · 快照代碼 <code>${escape(point.key)}</code>`;
-  const last=index===entries.length-1;
-  snapReplay.innerHTML=last?'<span class="tag green">目前版本 · 重播在上方對戰區</span>':point.replay_available?`<span class="tag green">${point.auto_starred?'自動保留上一筆 · ':point.starred?'★ ':''}完整重播已保存</span> <button type="button" class="button small" data-view="${index}">查看此快照的重播</button>`:'<span class="tag">此快照的重播已清理</span> <small class="muted">系統自動保留「上一筆」，另可手動星號1個；其餘只留成績。</small>';
+  const last=index===entries.length-1,repo=state.repository,manual=entries.findIndex(e=>e.manual_starred);
+  const star=!repo||!(last||point.replay_available)?'':point.manual_starred?`<span class="tag green">★ 已手動星號</span> <a class="text-link" target="_blank" rel="noopener" href="https://github.com/${escape(repo)}/tree/main/starred">取消星號（刪除該檔案）↗</a>`:`<button type="button" class="button small star-button" data-star="${index}">★ 保存此快照</button>${manual>=0?` <small class="muted">手動名額已被第 ${manual+1} 次使用，保存這筆會取代它。</small>`:''}`;
+  snapReplay.innerHTML=(last?'<span class="tag green">目前版本 · 重播在上方對戰區</span>':point.replay_available?`<span class="tag green">${point.auto_starred?'自動保留上一筆 · ':point.starred?'★ ':''}完整重播已保存</span> <button type="button" class="button small" data-view="${index}">查看此快照的重播</button>`:'<span class="tag">此快照的重播已清理</span> <small class="muted">系統自動保留「上一筆」，另可手動星號1個；其餘只留成績。</small>')+(star?` ${star}`:'');
   if(!point.matchups?.length){snapTable.innerHTML='<p class="empty">此快照建立時尚未記錄逐配對勝負，不補造數字。排名與積分仍可在上方走勢與表格查看。</p>';return;}
   snapTable.innerHTML=`<table><thead><tr><th>對戰配對</th><th>勝 / 敗 / 和（左方視角）</th><th>左方勝率</th><th>右方勝率</th><th>場數</th></tr></thead><tbody>${point.matchups.map(m=>`<tr><td>${escape(name(m.a))} <span class="faded">vs</span> ${escape(name(m.b))}</td><td>${m.a_stats?.wins??'—'} / ${m.a_stats?.losses??'—'} / ${m.a_stats?.draws??'—'}</td><td>${pctText(m.a_stats?.win_rate)}</td><td>${pctText(m.b_stats?.win_rate)}</td><td>${m.a_stats?.games??'—'}</td></tr>`).join('')}</tbody></table>`;
  }
- snapReplay.onclick=e=>{const b=e.target.closest('button[data-view]');if(b)document.dispatchEvent(new CustomEvent('view-snapshot',{detail:entries[Number(b.dataset.view)]}));};
+ snapReplay.onclick=e=>{const b=e.target.closest('button[data-view]');if(b)document.dispatchEvent(new CustomEvent('view-snapshot',{detail:entries[Number(b.dataset.view)]}));
+  const s=e.target.closest('button[data-star]');if(s){const key=entries[Number(s.dataset.star)].key,value=JSON.stringify({starred_at:new Date().toISOString()},null,1)+'\n';window.open(`https://github.com/${state.repository}/new/main?filename=${encodeURIComponent('starred/'+key+'.json')}&value=${encodeURIComponent(value)}`,'_blank','noopener');}};
  snapSelect.onchange=()=>showSnapshot(Number(snapSelect.value));
  snapPrev.onclick=()=>showSnapshot(Number(snapSelect.value)-1);
  snapNext.onclick=()=>showSnapshot(Number(snapSelect.value)+1);
