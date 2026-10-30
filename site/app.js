@@ -1,5 +1,5 @@
 import {setupPairNavigation} from './pair-navigation.js';
-import {renderRankingHistory} from './ranking-history.js?v=seedround1';
+import {renderRankingHistory} from './ranking-history.js?v=snapshot1';
 import {renderSeedRound} from './seed-round.js?v=seedround1';
 import {cloudPulse} from './cloud-pulse.js?v=model-readiness1';
 import {renderOpening,openingLine,anySilentLoss} from './opening.js?v=diag3';

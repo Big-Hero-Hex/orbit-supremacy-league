@@ -12,14 +12,30 @@ export function renderRankingHistory(state) {
  document.getElementById('rankingUpdateCount').textContent=`· ${entries.length} 筆`;
  document.getElementById('rankingLatestUpdate').textContent=entries.length?`最新：${changes(entries.at(-1))}`:'尚無紀錄';
  events.innerHTML=entries.map((point,i)=>`<button type="button" data-index="${i}" aria-pressed="false"><small>第 ${i+1} 次 · ${escape(when(point.recorded_at))}</small><strong>${escape(changes(point))}</strong></button>`).reverse().join('');
+ const snapSelect=document.getElementById('snapshotSelect'),snapTable=document.getElementById('snapshotTable'),snapMeta=document.getElementById('snapshotMeta'),snapPrev=document.getElementById('snapshotPrev'),snapNext=document.getElementById('snapshotNext');
+ const pctText=n=>Number.isFinite(n)?`${(n*100).toFixed(1)}%`:'—';
+ snapSelect.innerHTML=entries.map((point,i)=>`<option value="${i}">第 ${i+1} 次 · ${escape(when(point.recorded_at))}</option>`).reverse().join('');
+ function showSnapshot(index) {
+  const point=entries[index];
+  if(!point){snapTable.innerHTML='<p class="empty">尚無歷史快照。</p>';snapMeta.textContent='';snapPrev.disabled=snapNext.disabled=true;return;}
+  snapSelect.value=String(index);snapPrev.disabled=index===0;snapNext.disabled=index===entries.length-1;
+  const name=id=>point.players.find(r=>r.id===id)?.name??people.find(p=>p.id===id)?.name??id;
+  snapMeta.textContent=`${when(point.recorded_at)} · ${point.total_games??0} 場 · ${point.complete_round_robin?'完整全輪':'暫列／部分配對'} · ${changes(point)}`;
+  if(!point.matchups?.length){snapTable.innerHTML='<p class="empty">此快照建立時尚未記錄逐配對勝負，不補造數字。排名與積分仍可在上方走勢與表格查看。</p>';return;}
+  snapTable.innerHTML=`<table><thead><tr><th>對戰配對</th><th>勝 / 敗 / 和（左方視角）</th><th>左方勝率</th><th>右方勝率</th><th>場數</th></tr></thead><tbody>${point.matchups.map(m=>`<tr><td>${escape(name(m.a))} <span class="faded">vs</span> ${escape(name(m.b))}</td><td>${m.a_stats?.wins??'—'} / ${m.a_stats?.losses??'—'} / ${m.a_stats?.draws??'—'}</td><td>${pctText(m.a_stats?.win_rate)}</td><td>${pctText(m.b_stats?.win_rate)}</td><td>${m.a_stats?.games??'—'}</td></tr>`).join('')}</tbody></table>`;
+ }
+ snapSelect.onchange=()=>showSnapshot(Number(snapSelect.value));
+ snapPrev.onclick=()=>showSnapshot(Number(snapSelect.value)-1);
+ snapNext.onclick=()=>showSnapshot(Number(snapSelect.value)+1);
  function show(point,row) {
   detail.innerHTML=`<strong>${escape(changes(point))}</strong><span>${escape(row.name)} · ${escape(label(row,selector.value))} · ${escape(when(point.recorded_at))} · ${row.wins}勝 ${row.losses}敗 ${row.draws}和 / ${row.games}場 · ${point.complete_round_robin?'完整全輪':'暫列／部分配對'}</span>${point.model_updates?.length?`<details class="version-details"><summary>查看本次 ${point.model_updates.length} 位換版者的前後 SHA</summary>${point.model_updates.map(p=>`<div class="version-change"><b>${escape(p.name)} 換版</b><small>原版本 SHA <code>${escape(p.old_sha256)}</code></small><small>新版本 SHA <code>${escape(p.new_sha256)}</code></small></div>`).join('')}</details>`:''}<small>開局輪 ${escape(point.seed_round?.id??'歷史輪次未記錄')} · 所選選手模型 ${escape((row.sha256??'').slice(0,12))} · 當時已完成 ${point.total_games} 場；同一節點列出所有換版者，其他人的曲線也可能受影響。</small>`;
   for(const button of events.querySelectorAll('button'))button.setAttribute('aria-pressed',String(entries[Number(button.dataset.index)]===point));
+  showSnapshot(entries.indexOf(point));
  }
  events.onclick=e=>{const button=e.target.closest('button[data-index]');if(!button)return;const point=entries[Number(button.dataset.index)],row=point.players.find(r=>!hidden.has(r.id))??point.players[0];if(row)show(point,row);};
  function draw() {
   const metric=selector.value;
-  if(!entries.length){chart.innerHTML='<p class="empty">尚無真實戰績。首輪完成後，將自動留下第一筆歷史。</p>';detail.textContent='歷史只記錄真實已完成結果，不補造過去曲線。';return;}
+  if(!entries.length){showSnapshot(-1);chart.innerHTML='<p class="empty">尚無真實戰績。首輪完成後，將自動留下第一筆歷史。</p>';detail.textContent='歷史只記錄真實已完成結果，不補造過去曲線。';return;}
   const W=1000,H=340,L=62,R=35,T=25,B=60,width=W-L-R,height=H-T-B;
   const vals=entries.flatMap(e=>e.players.map(r=>r.points??0)),max=metric==='rank'?Math.max(people.length,2):metric==='points'?Math.max(10,Math.ceil(Math.max(...vals)/10)*10):100;
   const value=r=>metric==='rank'?r.rank:metric==='points'?r.points:r.score_rate*100;
