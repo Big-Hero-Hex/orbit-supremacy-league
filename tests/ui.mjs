@@ -82,6 +82,7 @@ try{
  // Returning to live data refetches the manifest; selection itself is sync.
  await page.locator('.matrix-cell').first().waitFor();
  assert.equal(await page.locator('.matrix-cell').count(),30,'latest snapshot restores the live matrix');
+ assert.equal(await page.locator('#pairNext').isVisible(),true,'multiple blank snapshots must not overwrite original live-section visibility');
  results.push('Snapshot selection: select/prev/next switch snapshots; unsaved ones blank the sections below the matrix; latest restores');
  await page.selectOption('#rankingMetric','points');assert.equal(await page.locator('#rankingHistoryTable tbody tr').count(),18);
  await page.locator('#ranking-history').screenshot({path:'runtime/ui-check/ranking-fixture-only.png'});
