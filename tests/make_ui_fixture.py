@@ -16,6 +16,7 @@ root=Path(__file__).resolve().parents[1]
 config=json.loads((root/"arena.json").read_text())
 record={"ticks":100,"walls":[],"ship_polygon":[[0,-20],[-13,14],[13,14]],"pilot_polygon":[[0,-9],[-6,6],[6,6]],"frames":[{"t":t,"s":[[300+t,400,0,1,0,3,0,0,0],[900-t,400,3.14,1,0,3,0,0,0]],"a":[],"b":[],"p":[],"e":[]} for t in range(0,101,2)]}
 players=[{**p,"sha256":str(i)*64,"status":"ready","filename":"UI-TEST-ONLY.zip"} for i,p in enumerate(config["players"],1)]
+players[0]['filename']='UI_TEST_ONLY_long_unbroken_uploaded_model_name_'+'x'*80+'.zip'
 pairs=[]
 for a,b in itertools.combinations(players,2):
     job,raw=LeagueTests().fixture();job.update(a=a,b=b,key=a["id"]+"-"+b["id"])
