@@ -171,6 +171,13 @@ try{
  assert.equal(pulseReads,2,'manual refresh must bypass five-minute API cache');assert.equal(await pulse.locator('#pollWarning').isVisible(),false);
  await pulse.locator('.broadcast-status').screenshot({path:'runtime/ui-check/recovered-status-fixture-only.png'});
  results.push('Mocked cloud status: stale warning visible, manual refresh refetches API immediately, healthy unchanged recovery hides warning');
+ await pulse.selectOption('#snapshotSelect','0');
+ const historyStatus=pulse.waitForResponse(r=>r.url().includes('/actions/runs?'));
+ await pulse.click('#refresh');await historyStatus;
+ assert.equal(pulseReads,3,'viewing history must not stop live cloud status refreshes');
+ assert.equal(await pulse.locator('#snapshotSelect').inputValue(),'0','cloud refresh preserves the selected historical snapshot');
+ assert.equal(await pulse.locator('.matrix-static').count(),30);
+ results.push('Historical snapshot keeps its matchup table while the global cloud status continues refreshing');
  const blocked=await browser.newPage({viewport:{width:1440,height:1000}});blocked.on('pageerror',e=>errors.push(String(e)));
  const invalid=structuredClone(fixture.state),bad=invalid.players.find(p=>p.kind!=='official_rulebot');
  bad.status='invalid';bad.message='不是可用的模型 ZIP：缺少 data、policy.pth';
