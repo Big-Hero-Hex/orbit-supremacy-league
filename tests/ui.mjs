@@ -34,6 +34,7 @@ try{
  await real.locator('.roster-card').first().waitFor();
  assert.equal(await real.locator('.roster-card').count(),liveState.players.length);
  assert.equal(await real.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await real.locator('.broadcast-status').screenshot({path:'runtime/ui-check/cloud-status-production.png'});
  await real.screenshot({path:'runtime/ui-check/desktop.png',fullPage:true});results.push('Production page: published roster count, no horizontal overflow');
  await real.setViewportSize({width:390,height:844});
  await real.screenshot({path:'runtime/ui-check/mobile.png',fullPage:true});
