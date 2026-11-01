@@ -1,7 +1,7 @@
 import {setupPairNavigation} from './pair-navigation.js';
 import {renderRankingHistory} from './ranking-history.js?v=snapshot7';
 import {renderSeedRound} from './seed-round.js?v=seedround1';
-import {cloudPulse} from './cloud-pulse.js?v=status-loading2';
+import {cloudPulse} from './cloud-pulse.js?v=status-clock3';
 import {renderOpening,openingLine,anySilentLoss} from './opening.js?v=diag3';
 import {renderDiagnostics,renderMistakes} from './diagnostics.js?v=diag3';
 const $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -21,9 +21,9 @@ function countdown(){
  const live=liveData??data;
  renderSeedRound(live.seed_round);
  const p=cloudPulse(live,cloudMeta),diff=Math.ceil((p.due-Date.now())/1000);
- const countdownLabels={loading:'正在確認',checking:'雲端檢查／比賽中',failed:'最近檢查失敗',delayed:'排程已逾時',unverified:'狀態待確認'};
+ const countdownLabels={loading:'正在確認',checking:'雲端檢查／比賽中',failed:'最近檢查失敗',delayed:'排程已逾時',unverified:'狀態待確認',clock_unverified:'排程時間待確認'};
  $('countdown').textContent=countdownLabels[p.status]??(diff>0?clock(diff):'等待下一輪啟動');
- $('nextCheck').textContent=p.hasClock?`雲端計時預計 ${new Date(p.due).toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})} · 平台排隊可能延遲`:'每5分鐘檢查 · 正在確認雲端計時狀態';
+ $('nextCheck').textContent=p.clockUnverified?'每5分鐘檢查 · 雲端回報時間超前，暫不顯示倒數':p.hasClock?`雲端計時預計 ${new Date(p.due).toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})} · 平台排隊可能延遲`:'每5分鐘檢查 · 正在確認雲端計時狀態';
  $('updated').textContent=`最近成功檢查 ${date(p.checked)} · 成績發布 ${date(live.updated_at)}`;
  const labels={loading:'正在確認雲端排程狀態',checking:'正在檢查模型／更新賽事',delayed:'自動檢查逾時 · 成績未更新',failed:'最近檢查失敗 · 舊成績保留',unverified:'雲端狀態暫時無法確認',blocked:'部分選手無可用模型／配對待處理'};
  $('cloudState').textContent=labels[p.status]??(p.noChange?'已檢查 · 模型無變更':live.complete_round_robin?'全輪戰績已就緒':live.total_games?'部分賽事已完成':'等待參賽模型');

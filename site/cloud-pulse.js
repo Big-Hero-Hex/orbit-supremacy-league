@@ -4,15 +4,18 @@ export function cloudPulse(data, meta, now=Date.now()) {
  const league=runs.filter(isLeague),last=league.find(r=>r.status==='completed'&&r.conclusion==='success'),latest=league[0];
  const active=league.some(r=>['in_progress','queued','waiting','pending'].includes(r.status));
  const clocks=runs.filter(isClock),clock=clocks.find(r=>r.status==='waiting')??clocks.find(r=>['in_progress','queued','pending'].includes(r.status));
- const checked=last?.updated_at??data.checked_at,age=now-Date.parse(checked),due=clock?Date.parse(clock.run_started_at??clock.created_at)+300000:Date.parse(checked)+300000;
+ const reportedCheck=last?.updated_at??data.checked_at,clockStart=Date.parse(clock?.run_started_at??clock?.created_at);
+ const clockUnverified=Date.parse(reportedCheck)>now+60000||clockStart>now+60000;
+ const checked=Date.parse(reportedCheck)>now+60000?(Date.parse(data.checked_at)<=now+60000?data.checked_at:null):reportedCheck,age=now-Date.parse(checked),due=clockUnverified?null:clock?clockStart+300000:Date.parse(checked)+300000;
  const unavailable=(data.players??[]).filter(p=>p.status!=='ready'),failures=data.failures??[];
- const common={checked,due,hasClock:!!clock,noChange:!unavailable.length&&!failures.length&&!!last&&String(last.id)!==String(data.cloud_run)};
+ const common={checked,due,hasClock:!!clock&&!clockUnverified,clockUnverified,noChange:!unavailable.length&&!failures.length&&!!last&&String(last.id)!==String(data.cloud_run)};
  // Published results can be hours old during healthy metadata-only checks.
  // Wait for the first status response before diagnosing a scheduler outage.
  if(meta==null)return {...common,due:null,status:'loading',message:''};
  if(meta?.unavailable)return {...common,status:'unverified',message:'無法確認雲端排程狀態，請查看雲端賽程；目前顯示的是最後已發布成績。'};
  if(active)return {...common,status:'checking',message:''};
  if(latest?.status==='completed'&&['failure','timed_out','action_required'].includes(latest.conclusion))return {...common,status:'failed',message:'最近一輪雲端檢查失敗。既有成績已保留；下一輪會再次檢查，換版配對不會被直接判輸。'};
+ if(clockUnverified&&!unavailable.length&&!failures.length)return {...common,status:'clock_unverified',message:'雲端回報的排程時間超前，暫時無法提供可靠倒數。已發布成績可正常查看。'};
  // Status is cached for five minutes; allow that cache window before declaring
  // a waiting clock late, otherwise a healthy completed tick looks stalled.
  if(age>900000||(clock&&now-due>360000))return {...common,status:'delayed',message:'雲端檢查已逾時，這不是「已檢查但沒變更」。請查看最後成功時間與雲端賽程；倒數不代表檢查已執行。'};
