@@ -78,7 +78,10 @@ try{
  assert.equal(await page.locator('#snapshotPrev').isDisabled(),true);
  await page.locator('#snapshotNext').click();assert.equal(await page.locator('#snapshotSelect').inputValue(),'1');
  assert.ok((await page.locator('#snapshotMeta').textContent()).includes('2026'));
- await page.locator('#snapshotSelect').selectOption('2');assert.equal(await page.locator('.matrix-cell').count(),30,'latest snapshot restores the live matrix');
+ await page.locator('#snapshotSelect').selectOption('2');
+ // Returning to live data refetches the manifest; selection itself is sync.
+ await page.locator('.matrix-cell').first().waitFor();
+ assert.equal(await page.locator('.matrix-cell').count(),30,'latest snapshot restores the live matrix');
  results.push('Snapshot selection: select/prev/next switch snapshots; unsaved ones blank the sections below the matrix; latest restores');
  await page.selectOption('#rankingMetric','points');assert.equal(await page.locator('#rankingHistoryTable tbody tr').count(),18);
  await page.locator('#ranking-history').screenshot({path:'runtime/ui-check/ranking-fixture-only.png'});
