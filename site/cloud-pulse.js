@@ -7,6 +7,9 @@ export function cloudPulse(data, meta, now=Date.now()) {
  const checked=last?.updated_at??data.checked_at,age=now-Date.parse(checked),due=clock?Date.parse(clock.run_started_at??clock.created_at)+300000:Date.parse(checked)+300000;
  const unavailable=(data.players??[]).filter(p=>p.status!=='ready'),failures=data.failures??[];
  const common={checked,due,hasClock:!!clock,noChange:!unavailable.length&&!failures.length&&!!last&&String(last.id)!==String(data.cloud_run)};
+ // Published results can be hours old during healthy metadata-only checks.
+ // Wait for the first status response before diagnosing a scheduler outage.
+ if(meta==null)return {...common,due:null,status:'loading',message:''};
  if(meta?.unavailable)return {...common,status:'unverified',message:'無法確認雲端排程狀態，請查看雲端賽程；目前顯示的是最後已發布成績。'};
  if(active)return {...common,status:'checking',message:''};
  if(latest?.status==='completed'&&['failure','timed_out','action_required'].includes(latest.conclusion))return {...common,status:'failed',message:'最近一輪雲端檢查失敗。既有成績已保留；下一輪會再次檢查，換版配對不會被直接判輸。'};

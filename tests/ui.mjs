@@ -149,12 +149,19 @@ try{
  results.push('UI fixtures only: 15 pairs,30 matrix cells,20-game guide/10 each seat, all100 option, teachers have no upload link, seed/playback/event/pair statistics');
  // Exercise real rendered failure/recovery text with explicitly mocked status,
  // without running a game or changing the real published scores.
- let pulseReads=0;const pulse=await browser.newPage({viewport:{width:1440,height:1000}});pulse.on('pageerror',e=>errors.push(String(e)));
+ let pulseReads=0,releaseStatus;
+ const firstStatus=new Promise(resolve=>releaseStatus=resolve);
+ const pulse=await browser.newPage({viewport:{width:1440,height:1000}});pulse.on('pageerror',e=>errors.push(String(e)));
  await pulse.route('**/data/latest.json',route=>route.fulfill({json:fixture.state}));
- await pulse.route('**/api.github.com/repos/*/orbit-supremacy-league/actions/runs?*',route=>{
+ await pulse.route('**/api.github.com/repos/*/orbit-supremacy-league/actions/runs?*',async route=>{
+  if(!pulseReads)await firstStatus;
   pulseReads++;const now=Date.now();return route.fulfill({json:{workflow_runs:[{id:'ui-test-only',path:'.github/workflows/league.yml',status:'completed',conclusion:'success',updated_at:new Date(now-(pulseReads===1?3600000:10000)).toISOString()},{path:'.github/workflows/poll-clock.yml',status:'waiting',created_at:new Date(now-(pulseReads===1?3600000:10000)).toISOString()}]}});
  });
- await pulse.goto(preview,{waitUntil:'networkidle'});
+ await pulse.goto(preview,{waitUntil:'domcontentloaded'});
+ await pulse.waitForFunction(()=>document.getElementById('cloudState').textContent==='正在確認雲端排程狀態');
+ assert.equal(await pulse.locator('#pollWarning').isVisible(),false,'a pending API must not show a false scheduler outage');
+ assert.equal(await pulse.locator('#countdown').textContent(),'正在確認');
+ releaseStatus();
  await pulse.waitForFunction(()=>document.getElementById('cloudState').textContent.includes('逾時'));
  assert.equal(await pulse.locator('#pollWarning').isVisible(),true);await pulse.locator('.broadcast-status').screenshot({path:'runtime/ui-check/stale-status-fixture-only.png'});
  await pulse.click('#refresh');await pulse.waitForFunction(()=>document.getElementById('cloudState').textContent.includes('模型無變更'));

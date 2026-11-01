@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import {cloudPulse} from '../site/cloud-pulse.js';
 const now=Date.parse('2026-10-20T15:30:00Z'),data={checked_at:'2026-10-20T14:00:00Z',cloud_run:'1'};
+for(const initial of [null,undefined]){
+ const pending=cloudPulse(data,initial,now);
+ assert.equal(pending.status,'loading','old published results do not prove an outage before the status API responds');
+ assert.equal(pending.due,null,'no invented countdown before the scheduler is known');
+ assert.equal(pending.message,'');
+}
 assert.equal(cloudPulse(data,{runs:[]},now).status,'delayed');
 const good={id:2,path:'.github/workflows/league.yml',status:'completed',conclusion:'success',updated_at:'2026-10-20T15:29:30Z'};
 const clock={path:'.github/workflows/poll-clock.yml',status:'waiting',created_at:'2026-10-20T15:28:00Z'};
