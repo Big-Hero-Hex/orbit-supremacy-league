@@ -3,10 +3,6 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-  schedule:
-    # Hourly fallback; the separate server-side five-minute clock dispatches
-    # normal checks, avoiding dependence on GitHub cron event delivery.
-    - cron: '2 * * * *'
 
 concurrency:
   group: osl-broadcast
