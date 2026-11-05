@@ -1,7 +1,6 @@
 import {setupPairNavigation} from './pair-navigation.js';
 import {renderRankingHistory} from './ranking-history.js?v=snapshot7';
 import {renderSeedRound} from './seed-round.js?v=seedround1';
-import {cloudPulse} from './cloud-pulse.js?v=status-clock3';
 import {renderOpening,openingLine,anySilentLoss} from './opening.js?v=diag3';
 import {renderDiagnostics,renderMistakes} from './diagnostics.js?v=diag3';
 const $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -9,46 +8,40 @@ const pct=n=>Number.isFinite(n)?`${(n*100).toFixed(1)}%`:'—', num=n=>Number.is
 const date=t=>t?new Date(t).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false}):'尚無';
 const clock=t=>`${Math.floor(t/60).toString().padStart(2,'0')}:${Math.floor(t%60).toString().padStart(2,'0')}`;
 const pairNavigation=setupPairNavigation($('pairTabs'),$('pairPrevious'),$('pairNext'));
-let cloudMeta=null,cloudFetched=0;
 let liveData=null,viewing=null;
 let pendingLink=true,data=null,pair=null,selected=null,recording=null,playing=false,position=0,anchor=0,loadingToken=0;
 const name=id=>data?.players.find(p=>p.id===id)?.name??id, player=id=>data.players.find(p=>p.id===id);
 const base=()=>`data/pairs/${pair.key}/`;
 const expectedPairs=()=>data.expected_pairs??data.players.length*(data.players.length-1)/2,expectedGames=()=>data.expected_games??expectedPairs()*100;
 function node(id,html){$(id).innerHTML=html;}
-function countdown(){
- if(!data)return;
- const live=liveData??data;
- renderSeedRound(live.seed_round);
- const p=cloudPulse(live,cloudMeta),diff=Math.ceil((p.due-Date.now())/1000);
- const countdownLabels={loading:'正在確認',checking:'雲端檢查／比賽中',failed:'最近檢查失敗',delayed:'排程已逾時',unverified:'狀態待確認',clock_unverified:'排程時間待確認'};
- $('countdown').textContent=countdownLabels[p.status]??(diff>0?clock(diff):'等待下一輪啟動');
- $('nextCheck').textContent=p.clockUnverified?'每5分鐘檢查 · 雲端回報時間超前，暫不顯示倒數':p.hasClock?`雲端計時預計 ${new Date(p.due).toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})} · 平台排隊可能延遲`:'每5分鐘檢查 · 正在確認雲端計時狀態';
- $('updated').textContent=`最近成功檢查 ${date(p.checked)} · 成績發布 ${date(live.updated_at)}`;
- const labels={loading:'正在確認雲端排程狀態',checking:'正在檢查模型／更新賽事',delayed:'自動檢查逾時 · 成績未更新',failed:'最近檢查失敗 · 舊成績保留',unverified:'雲端狀態暫時無法確認',blocked:'部分選手無可用模型／配對待處理'};
- $('cloudState').textContent=labels[p.status]??(p.noChange?'已檢查 · 模型無變更':live.complete_round_robin?'全輪戰績已就緒':live.total_games?'部分賽事已完成':'等待參賽模型');
- $('pollWarning').hidden=!p.message;$('pollWarning').textContent=p.message;
-}
-async function cloudStatus(){if(!data||Date.now()-cloudFetched<300000)return;cloudFetched=Date.now();try{const response=await fetch(`https://api.github.com/repos/${data.repository}/actions/runs?per_page=12`,{cache:'no-cache'});if(!response.ok)throw Error(response.status);cloudMeta={runs:(await response.json()).workflow_runs,unavailable:false};}catch{cloudMeta={...cloudMeta,unavailable:true};}countdown();}
-
 async function refresh(){
  $('refresh').disabled=true;
- try{const response=await fetch('data/latest.json',{cache:'no-cache'});if(!response.ok)throw Error(response.status);const incoming=await response.json();liveData=incoming;if(viewing){countdown();cloudStatus();return;}const oldKey=pair?.key;data=incoming;
- renderAll(oldKey);renderRankingHistory(data);
- countdown();cloudStatus();
- }catch(error){$('cloudState').textContent='暫時無法取得最新結果';$('notice').textContent='雲端資料連線暫時失敗，既有結果不代表更新已完成。請稍後刷新。';console.error(error);}
- finally{$('refresh').disabled=false;}
+ try{
+  const response=await fetch('data/latest.json',{cache:'no-cache'});
+  if(!response.ok)throw Error(response.status);
+  liveData=await response.json();
+  $('updated').textContent=date(liveData.updated_at);
+  $('updated').dateTime=liveData.updated_at??'';
+  renderSeedRound(liveData.seed_round);
+  $('cloudLink').href=`https://github.com/${liveData.repository}/actions/workflows/league.yml`;
+  if(!viewing){
+   const oldKey=pair?.key;
+   data=liveData;
+   renderAll(oldKey);
+   renderRankingHistory(data);
+  }
+  $('notice').hidden=true;
+ }catch(error){
+  $('notice').textContent='暫時無法讀取已封存的賽事結果，請稍後刷新。';
+  $('notice').hidden=false;
+  console.error(error);
+ }finally{$('refresh').disabled=false;}
 }
 function renderAll(oldKey){
  if(!viewing){
- $('cloudState').textContent=({complete:'全輪戰績已就緒',running:'雲端比賽進行中',partial:'部分賽事已完成',waiting:'競技場就緒 · 等待模型'})[data.status]??'讀取雲端狀態';
- $('updated').textContent=`最後檢查 ${date(data.checked_at)} · 已發布 ${date(data.updated_at)}`;
  $('totalGames').textContent=String(data.total_games??0).padStart(3,'0');
  $('playerCount').textContent=String(data.players.length).padStart(2,'0');$('pairCount').textContent=String(expectedPairs()).padStart(2,'0');$('expectedGames').textContent=`已完成場次 / ${expectedGames()}`;
  $('rankingScope').textContent=data.complete_round_robin?`完整${expectedGames()}場 · ${viewing?'歷史快照':'目前版本'}`:data.total_games?'暫列 · 全輪尚未完成':'等待參賽模型';
- $('cloudLink').href=`https://github.com/${data.repository}/actions/workflows/league.yml`;
- $('driveRoot').href=`https://drive.google.com/drive/folders/${data.drive_folder}`;
- $('notice').textContent=(data.failures?.length?`${data.failures.length}組配對未完成，沒有直接判輸。請查看雲端賽程。 `:'')+'比賽、推論與錄影全在GitHub雲端執行。關機不影響；本頁只顯示已發布結果。';
  renderStandings();
  }
  renderMatrix();renderModels();renderHighlights();
@@ -75,12 +68,12 @@ async function viewSnapshot(point,scroll=false){
  }catch(error){console.error(error);viewBlank(point,'此快照的重播與統計已無法讀取。');}
 }
 function selectSnapshot({point,last}){if(last)leaveSnapshot();else if(point.replay_available)viewSnapshot(point);else viewBlank(point,'此快照沒有保存重播與統計，因此這裡留白。系統自動保留「上一筆」，另可手動星號1個。');}
-function leaveSnapshot(){if(!viewing)return;viewing=null;setBlank(false);$('snapshotBanner').hidden=true;cloudFetched=0;refresh();}
+function leaveSnapshot(){if(!viewing)return;viewing=null;setBlank(false);$('snapshotBanner').hidden=true;refresh();}
 function renderStandings(){
  const rows=data.standings??[];
- node('leaderboard',rows.length?rows.map(r=>{const p=player(r.id);return `<article class="leader-row" style="--team:${esc(p.color)}"><div class="rank">${String(r.rank).padStart(2,'0')}</div><div><span class="player-code">${esc(p.code)}</span><span class="player-name">${esc(p.name)}</span></div><div><span class="label">每場積分率</span><b class="number">${pct(r.score_rate)}</b><div class="bar"><i style="width:${r.score_rate*100}%"></i></div></div><div><span class="label">勝 / 敗 / 和</span><b>${r.wins} / ${r.losses} / ${r.draws}</b></div><div><span class="label">勝率</span><b class="number">${pct(r.win_rate)}</b></div><div><span class="label">場次</span><b>${r.games}</b></div></article>`;}).join(''):'<div class="panel empty">群雄列陣，鋒芒待試。上傳模型後，雲端將自動排入對戰；目前沒有真實比賽成績。</div>');
+ node('leaderboard',rows.length?rows.map(r=>{const p=player(r.id);return `<article class="leader-row" style="--team:${esc(p.color)}"><div class="rank">${String(r.rank).padStart(2,'0')}</div><div><span class="player-code">${esc(p.code)}</span><span class="player-name">${esc(p.name)}</span></div><div><span class="label">每場積分率</span><b class="number">${pct(r.score_rate)}</b><div class="bar"><i style="width:${r.score_rate*100}%"></i></div></div><div><span class="label">勝 / 敗 / 和</span><b>${r.wins} / ${r.losses} / ${r.draws}</b></div><div><span class="label">勝率</span><b class="number">${pct(r.win_rate)}</b></div><div><span class="label">場次</span><b>${r.games}</b></div></article>`;}).join(''):'<div class="panel empty">這一季沒有已發布的比賽成績。</div>');
  const labels={waiting:'等待模型',ambiguous:'需要保留單一ZIP',ready:'模型已就位',invalid:'模型ZIP格式不符',error:'讀取失敗'};
- node('roster',data.players.map(p=>`<article class="roster-card" style="--team:${esc(p.color)}"><span class="code">${esc(p.code)}</span><h3>${esc(p.name)}</h3><span class="tag ${p.status==='ready'?'green':''}">${p.kind==='official_rulebot'?'官方規則已就位':labels[p.status]??esc(p.status)}</span><p>${esc(p.message??p.filename??'')}</p>${p.kind==='official_rulebot'?'<span class="muted">老師原版 · 固定規則，無神經網路</span>':`<a href="https://drive.google.com/drive/folders/${esc(p.folder)}" target="_blank" rel="noopener">前往個人上傳席 ↗</a>`}</article>`).join(''));
+ node('roster',data.players.map(p=>`<article class="roster-card" style="--team:${esc(p.color)}"><span class="code">${esc(p.code)}</span><h3>${esc(p.name)}</h3><span class="tag ${p.status==='ready'?'green':''}">${p.kind==='official_rulebot'?'官方規則已就位':labels[p.status]??esc(p.status)}</span><p>${esc(p.message??p.filename??'')}</p>${p.kind==='official_rulebot'?'<span class="muted">老師原版 · 固定規則，無神經網路</span>':''}</article>`).join(''));
 }
 function renderMatrix(){node('matrixTable',`<table><thead><tr><th>列選手勝率 ↓</th>${data.players.map(p=>`<th>${esc(p.name)}</th>`).join('')}</tr></thead><tbody>${data.players.map(a=>`<tr><th>${esc(a.name)}</th>${data.players.map(b=>{if(a.id===b.id)return '<td class="faded">／</td>';const p=data.pairs.find(p=>[p.a,p.b].includes(a.id)&&[p.a,p.b].includes(b.id));if(!p)return '<td class="faded">未開賽</td>';const s=p.stats[a.id];return `<td class="matrix-cell" data-pair="${p.key}" title="95%區間 ${pct(s.win_rate_ci95[0])}–${pct(s.win_rate_ci95[1])}；點擊看對戰"><b>${pct(s.win_rate)}</b><small>${s.wins} / ${s.losses} / ${s.draws}</small></td>`;}).join('')}</tr>`).join('')}</tbody></table>`);}
 function renderTabs(){node('pairTabs',data.pairs.length?data.pairs.map(p=>`<button class="pair-tab ${pair?.key===p.key?'active':''}" data-pair="${p.key}">${esc(name(p.a))} <span class="faded">vs</span> ${esc(name(p.b))} · ${p.stats[p.a].wins}:${p.stats[p.b].wins}</button>`).join(''):`<span class="tag">尚無完成的配對 · 預計${expectedPairs()}組</span>`);pairNavigation.refresh();}
@@ -149,8 +142,8 @@ function renderWeaknesses(){const pairScope=$('statsScope').value==='pair'&&pair
 function renderModels(){node('modelRegistry',`<table><thead><tr><th>選手</th><th>目前檔名</th><th>SHA256（完整可選取複製）</th><th>參數量</th><th>狀態</th></tr></thead><tbody>${data.players.map(p=>{const info=data.pairs.find(q=>q.model_info?.[p.id])?.model_info?.[p.id];return `<tr><td>${esc(p.name)}</td><td>${esc(p.filename??(viewing?'':'尚未上傳'))}</td><td><code>${esc(p.sha256??'—')}</code></td><td>${p.kind==='official_rulebot'?'規則程式 · 非神經網路':info?num(info.parameters):viewing?'':'待雲端載入'}</td><td>${esc(p.message??p.status)}</td></tr>`;}).join('')}</tbody></table>`);}
 async function history(){try{const r=await fetch('data/history.json',{cache:'no-cache'}),rows=await r.json();node('historyList',rows.length?rows.slice().reverse().map(h=>`<div><p>${date(h.recorded_at)}</p><table><tr><th>名次</th><th>選手</th><th>勝/敗/和</th><th>積分率</th><th>版本SHA</th></tr>${h.standings.map(s=>`<tr><td>${s.rank}</td><td>${esc(h.players.find(p=>p.id===s.id)?.name)}</td><td>${s.wins}/${s.losses}/${s.draws}</td><td>${pct(s.score_rate)}</td><td><code>${esc(h.players.find(p=>p.id===s.id)?.sha256?.slice(0,16))}</code></td></tr>`).join('')}</table></div>`).join(''):'<p>尚無歷史換版成績。第一次完成對戰後，換版時會保留。</p>');}catch{node('historyList','<p>歷史成績暫時無法讀取。</p>');}}
 document.addEventListener('view-snapshot',e=>viewSnapshot(e.detail,true));document.addEventListener('snapshot-selected',e=>selectSnapshot(e.detail));$('snapshotBack').onclick=leaveSnapshot;
-$('refresh').onclick=()=>{cloudFetched=0;refresh();};for(const id of ['seatFilter','resultFilter','seedFilter','sortFilter','watchSet'])$(id).addEventListener(id==='seedFilter'?'input':'change',()=>{if(id==='seedFilter'&&$('seedFilter').value)$('watchSet').value='all';renderGames();});$('statsScope').onchange=renderStats;$('weaknessPlayer').onchange=renderWeaknesses;
+$('refresh').onclick=refresh;for(const id of ['seatFilter','resultFilter','seedFilter','sortFilter','watchSet'])$(id).addEventListener(id==='seedFilter'?'input':'change',()=>{if(id==='seedFilter'&&$('seedFilter').value)$('watchSet').value='all';renderGames();});$('statsScope').onchange=renderStats;$('weaknessPlayer').onchange=renderWeaknesses;
 window.addEventListener('hashchange',openFromHash);
 document.addEventListener('click',event=>{const link=event.target.closest('a[href^="#game="]');if(link){event.preventDefault();window.history.replaceState(null,'',link.getAttribute('href'));openFromHash();return;}const focus=event.target.closest('[data-highlight-game]');if(focus){choosePair(focus.dataset.highlightPair,focus.dataset.highlightGame);$('arena').scrollIntoView({behavior:'smooth',block:'center'});}const p=event.target.closest('[data-pair]');if(p){choosePair(p.dataset.pair);if(p.tagName==='TD')$('broadcast').scrollIntoView({behavior:'smooth'});}const g=event.target.closest('[data-game]');if(g)chooseGame(g.dataset.game);const t=event.target.closest('[data-tick]');if(t&&recording){playing=false;draw(Math.max(0,Number(t.dataset.tick)/50-.3));$('play').textContent='▶';}});
 $('play').onclick=()=>{if(!recording)return;if(position>=selected.seconds)position=0;playing=!playing;anchor=0;$('play').textContent=playing?'❚❚':'▶';if(playing)requestAnimationFrame(animate);};$('seek').oninput=()=>{if(recording){playing=false;draw(Number($('seek').value)/1000*selected.seconds);$('play').textContent='▶';}};$('fullScreen').onclick=()=>{$('arena').parentElement.requestFullscreen?.().catch(()=>{});};
-document.querySelector('.history-panel').addEventListener('toggle',event=>{if(event.target.open)history();});setInterval(countdown,1000);setInterval(()=>{if(!document.hidden)refresh();},60000);refresh();
+document.querySelector('.history-panel').addEventListener('toggle',event=>{if(event.target.open)history();});refresh();

@@ -1,6 +1,11 @@
 name: OSL · 雲端賽事中心
 on:
   workflow_dispatch:
+    inputs:
+      pages_only:
+        description: Deploy the site with archived results and recordings
+        type: boolean
+        default: false
   push:
     branches: [main]
 
@@ -27,7 +32,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+      - name: Restore published archive for a site-only deployment
+        if: inputs.pages_only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p runtime
+          gh release download arena-data --pattern site.tar.gz --dir runtime
+          tar -xzf runtime/site.tar.gz -C site
+          test -s site/data/latest.json
       - name: Read lightweight previous manifest (no recordings)
+        if: ${{ !inputs.pages_only }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -48,6 +63,7 @@ jobs:
             fi
           fi
       - name: Check participant folders and official rule-bot hashes
+        if: ${{ !inputs.pages_only }}
         id: plan
         run: python arena/plan.py
       - name: Freeze shared daily seed draw before any matches
@@ -95,14 +111,14 @@ jobs:
           gh release upload arena-data runtime/site.tar.gz --clobber
           gh release upload arena-data runtime/manifest.json.gz --clobber
       - uses: actions/configure-pages@v5
-        if: steps.plan.outputs.publish == 'true'
+        if: inputs.pages_only || steps.plan.outputs.publish == 'true'
       - uses: actions/upload-pages-artifact@v3
-        if: steps.plan.outputs.publish == 'true'
+        if: inputs.pages_only || steps.plan.outputs.publish == 'true'
         with:
           path: site
           retention-days: 1
       - name: Publish OSL
-        if: steps.plan.outputs.publish == 'true'
+        if: inputs.pages_only || steps.plan.outputs.publish == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
       - name: Remove old deployment copies after new site is live

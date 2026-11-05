@@ -42,17 +42,19 @@ try{
  writeFileSync('runtime/ui-check/production-mobile-diagnostic.json',JSON.stringify(await real.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth,wide:[...document.querySelectorAll('main *')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).map(e=>({tag:e.tagName,id:e.id,class:e.className,right:e.getBoundingClientRect().right,client:e.clientWidth,scroll:e.scrollWidth})).slice(0,60)})),null,2));
  results.push(`Production mobile overflow: ${realMobileOverflow}; independently verify current checkout below`);
  const page=await browser.newPage({viewport:{width:1440,height:1000}});page.on('pageerror',e=>errors.push(String(e)));
- // The synthetic seed round is fixed on 2026-10-22. Do not let this
- // countdown assertion expire as the real calendar advances.
- await page.clock.setFixedTime(new Date('2026-10-22T06:00:00Z'));
+ const actionsRequests=[];
+ page.on('request',request=>{if(request.url().includes('/actions/runs?'))actionsRequests.push(request.url());});
  await page.route('**/data/latest.json',route=>route.fulfill({json:fixture.state}));
  await page.route('**/replays/*.json.gz',route=>route.fulfill({contentType:'application/gzip',body:gzipSync(JSON.stringify(fixture.record))}));
  await page.goto(preview,{waitUntil:'networkidle'});
  await page.waitForFunction(()=>document.querySelectorAll('.leader-row').length===6);
  await page.waitForFunction(()=>document.querySelectorAll('#rankingChart circle').length===18);
  assert.ok((await page.locator('#seedRoundName').textContent()).includes('20261022'));
- assert.ok((await page.locator('#seedRoundNext').textContent()).includes('04:00:00'));
- assert.ok((await page.locator('#seedRoundCountdown').textContent()).includes('換輪倒數'));
+ assert.equal(await page.locator('#cloudState').textContent(),'賽季結束');
+ assert.equal(await page.locator('.hero .eyebrow').textContent(),'SEASON 01 賽季結束');
+ assert.equal(await page.locator('#updated').getAttribute('datetime'),fixture.state.updated_at);
+ assert.equal(await page.locator('#countdown, #seedRoundCountdown, #pollWarning, #driveRoot').count(),0);
+ assert.equal(await page.locator('.roster-card a').count(),0);
  await page.selectOption('#rankingMetric','rank');assert.ok((await page.locator('#rankingChart').textContent()).includes('#1'));
  await page.locator('#rankingLegend button').first().click();assert.equal(await page.locator('#rankingChart circle').count(),15);
  await page.locator('#rankingLegend button').first().click();assert.equal(await page.locator('#rankingChart circle').count(),18);
@@ -74,7 +76,7 @@ try{
  await page.locator('#rankingChart circle[data-index="1"]').nth(2).focus();
  assert.equal(await page.locator('#rankingDetail .version-change').count(),2,'third participant curve still lists both actual model updates');
  results.push('History attribution: simultaneous updates list both names and old/new SHA even on another participant curve');
- results.push('Daily shared seeds: Taipei 04:00/countdown visible; seed-only rotation clearly distinguished from model replacements');
+ results.push('Archived shared seeds: completed season has no rotation countdown, and history distinguishes seed-only changes from model replacements');
  await page.locator('#rankingUpdates>summary').click();
  assert.equal(await page.locator('#rankingUpdates').evaluate(e=>e.open),false);
  results.push('History disclosure: closed by default, latest summary visible, keyboard expansion, all model SHA available, collapse supported');
@@ -156,47 +158,15 @@ try{
  await page.locator('.pair-tab').nth(2).click();await page.waitForFunction(()=>document.getElementById('screenEmpty').hidden===true);
  await page.screenshot({path:'runtime/ui-check/ui-fixture-only.png',fullPage:true});
  results.push('UI fixtures only: 15 pairs,30 matrix cells,20-game guide/10 each seat, all100 option, teachers have no upload link, seed/playback/event/pair statistics');
- // Exercise real rendered failure/recovery text with explicitly mocked status,
- // without running a game or changing the real published scores.
- let pulseReads=0,releaseStatus;
- const firstStatus=new Promise(resolve=>releaseStatus=resolve);
- const pulse=await browser.newPage({viewport:{width:1440,height:1000}});pulse.on('pageerror',e=>errors.push(String(e)));
- await pulse.route('**/data/latest.json',route=>route.fulfill({json:fixture.state}));
- await pulse.route('**/api.github.com/repos/*/orbit-supremacy-league/actions/runs?*',async route=>{
-  if(!pulseReads)await firstStatus;
-  pulseReads++;const now=Date.now();return route.fulfill({json:{workflow_runs:[{id:'ui-test-only',path:'.github/workflows/league.yml',status:'completed',conclusion:'success',updated_at:new Date(now-(pulseReads===1?3600000:10000)).toISOString()},{path:'.github/workflows/poll-clock.yml',status:'waiting',created_at:new Date(now-(pulseReads===1?3600000:10000)).toISOString()}]}});
- });
- await pulse.goto(preview,{waitUntil:'domcontentloaded'});
- await pulse.waitForFunction(()=>document.getElementById('cloudState').textContent==='正在確認雲端排程狀態');
- assert.equal(await pulse.locator('#pollWarning').isVisible(),false,'a pending API must not show a false scheduler outage');
- assert.equal(await pulse.locator('#countdown').textContent(),'正在確認');
- releaseStatus();
- await pulse.waitForFunction(()=>document.getElementById('cloudState').textContent.includes('逾時'));
- assert.equal(await pulse.locator('#pollWarning').isVisible(),true);await pulse.locator('.broadcast-status').screenshot({path:'runtime/ui-check/stale-status-fixture-only.png'});
- await pulse.click('#refresh');await pulse.waitForFunction(()=>document.getElementById('cloudState').textContent.includes('模型無變更'));
- assert.equal(pulseReads,2,'manual refresh must bypass five-minute API cache');assert.equal(await pulse.locator('#pollWarning').isVisible(),false);
- await pulse.locator('.broadcast-status').screenshot({path:'runtime/ui-check/recovered-status-fixture-only.png'});
- results.push('Mocked cloud status: stale warning visible, manual refresh refetches API immediately, healthy unchanged recovery hides warning');
- await pulse.selectOption('#snapshotSelect','0');
- const historyStatus=pulse.waitForResponse(r=>r.url().includes('/actions/runs?'));
- await pulse.click('#refresh');await historyStatus;
- assert.equal(pulseReads,3,'viewing history must not stop live cloud status refreshes');
- assert.equal(await pulse.locator('#snapshotSelect').inputValue(),'0','cloud refresh preserves the selected historical snapshot');
- assert.equal(await pulse.locator('.matrix-static').count(),30);
- results.push('Historical snapshot keeps its matchup table while the global cloud status continues refreshing');
- const blocked=await browser.newPage({viewport:{width:1440,height:1000}});blocked.on('pageerror',e=>errors.push(String(e)));
- const invalid=structuredClone(fixture.state),bad=invalid.players.find(p=>p.kind!=='official_rulebot');
- bad.status='invalid';bad.message='不是可用的模型 ZIP：缺少 data、policy.pth';
- await blocked.route('**/data/latest.json',route=>route.fulfill({json:invalid}));
- await blocked.route('**/api.github.com/repos/*/orbit-supremacy-league/actions/runs?*',route=>route.fulfill({json:{workflow_runs:[{id:'ui-blocked-test',path:'.github/workflows/league.yml',status:'completed',conclusion:'success',updated_at:new Date().toISOString()}]}}));
- await blocked.goto(preview,{waitUntil:'networkidle'});
- await blocked.waitForFunction(()=>document.getElementById('cloudState').textContent.includes('部分選手'));
- assert.ok((await blocked.locator('#roster').textContent()).includes('模型ZIP格式不符'));
- assert.ok((await blocked.locator('#pollWarning').textContent()).includes('policy.pth'));
- assert.equal(await blocked.locator('#pollWarning').isVisible(),true);
- await blocked.locator('.broadcast-status').screenshot({path:'runtime/ui-check/invalid-model-status-fixture-only.png'});
- results.push('Invalid uploaded ZIP: explicit roster and visible blocked reason despite a successful scheduler check');
- await blocked.close();
+ await page.selectOption('#snapshotSelect','0');
+ const refreshed=page.waitForResponse(response=>response.url().endsWith('/data/latest.json'));
+ await page.click('#refresh');
+ await refreshed;
+ assert.equal(await page.locator('#cloudState').textContent(),'賽季結束');
+ assert.equal(await page.locator('#snapshotSelect').inputValue(),'0','refresh preserves the selected historical snapshot');
+ assert.equal(await page.locator('.matrix-static').count(),30);
+ assert.deepEqual(actionsRequests,[],'archived results never request live Actions status');
+ results.push('Season complete status survives manual refresh with a historical snapshot selected');
  // A repair can be verified before its deployment leaves the match queue.
  // Keep old-production diagnostics, but gate the checked-out release itself.
  if(productionMatchesCheckout)assert.equal(realMobileOverflow,false,'Published current-release mobile layout must not overflow');
